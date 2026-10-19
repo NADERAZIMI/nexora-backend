@@ -68,7 +68,7 @@ jobs:
         run: cargo test -p nexora-types --all-features --test fuzz_corpus
       - name: Upload branch coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: b02-financial-coverage
           path: coverage.json
@@ -148,7 +148,7 @@ jobs:
       - name: OpenAPI and AsyncAPI
         run: npm run lint:contracts
       - name: Upload generated Go stubs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: generated-go
           path: gen/go
@@ -201,7 +201,7 @@ jobs:
           format: spdx-json
           output-file: reports/B01/sbom.spdx.json
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: reports/B01/sbom.spdx.json
