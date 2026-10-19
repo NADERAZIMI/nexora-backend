@@ -1,0 +1,69 @@
+name: Financial fuzz
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/nexora-types/**"
+      - ".github/workflows/fuzz.yml"
+  pull_request:
+    paths:
+      - "crates/nexora-types/**"
+      - ".github/workflows/fuzz.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  libfuzzer:
+    name: libFuzzer smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-10-01
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/nexora-types/fuzz
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
+      - name: Deterministic parser corpus
+        run: cargo test -p nexora-types --all-features --test fuzz_corpus
+      - name: Corpus inventory
+        working-directory: crates/nexora-types/fuzz
+        run: |
+          echo "decimal_corpus_files=$(find corpus/decimal -type f | wc -l)"
+          echo "instrument_corpus_files=$(find corpus/instrument -type f | wc -l)"
+      - name: Decimal fuzz smoke
+        working-directory: crates/nexora-types/fuzz
+        run: |
+          /usr/bin/time -f 'decimal_elapsed_seconds=%e' \
+            cargo +nightly-2026-10-01 fuzz run decimal -- \
+              -max_total_time=30 \
+              -timeout=10 \
+              -rss_limit_mb=2048 \
+              -print_final_stats=1
+      - name: Instrument fuzz smoke
+        working-directory: crates/nexora-types/fuzz
+        run: |
+          /usr/bin/time -f 'instrument_elapsed_seconds=%e' \
+            cargo +nightly-2026-10-01 fuzz run instrument -- \
+              -max_total_time=30 \
+              -timeout=10 \
+              -rss_limit_mb=2048 \
+              -print_final_stats=1
+      - name: Upload fuzz artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b02-fuzz-artifacts
+          path: crates/nexora-types/fuzz/artifacts
+          if-no-files-found: ignore
+          retention-days: 30

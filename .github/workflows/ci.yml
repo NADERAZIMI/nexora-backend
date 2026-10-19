@@ -41,6 +41,40 @@ jobs:
       - name: Build
         run: cargo build --workspace --all-targets
 
+  financial-verification:
+    name: Financial verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-10-01
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --version 0.9.1 --locked
+      - name: Financial branch coverage
+        run: |
+          cargo +nightly-2026-10-01 llvm-cov \
+            --branch \
+            -p nexora-types \
+            --all-features \
+            --ignore-filename-regex='(^|/)(tests|benches|fuzz)/' \
+            --json \
+            --output-path coverage.json
+          python3 scripts/check_financial_coverage.py coverage.json
+      - name: Fuzz corpus regression
+        run: cargo test -p nexora-types --all-features --test fuzz_corpus
+      - name: Upload branch coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b02-financial-coverage
+          path: coverage.json
+          if-no-files-found: warn
+          retention-days: 30
+
   go:
     name: Go
     runs-on: ubuntu-latest
@@ -151,7 +185,7 @@ jobs:
           npm ci --ignore-scripts
           npm audit --audit-level=critical
       - name: Filesystem scan
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: fs
           scan-ref: .
@@ -181,7 +215,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
       - name: Install Semgrep
         run: pip install semgrep
       - name: Scan

@@ -155,11 +155,9 @@ impl ContractSpec {
                         ));
                     }
 
-                    let rate_delta = tier
-                        .mmr_bps
-                        .get()
-                        .checked_sub(prior.mmr_bps.get())
-                        .ok_or(DomainError::Overflow)?;
+                    // Both validated rates are in 0..=10_000, so their
+                    // difference cannot overflow i32.
+                    let rate_delta = tier.mmr_bps.get() - prior.mmr_bps.get();
                     let product = tier
                         .notional_floor
                         .atomic()
@@ -344,7 +342,7 @@ mod tests {
     use crate::decimal::Scale;
     use crate::error::DomainError;
     use crate::id::{AssetId, SymbolId};
-    use crate::money::{Amount, Bps, Multiplier, Qty};
+    use crate::money::{Amount, Bps, Multiplier, Price, Qty};
     use crate::rounding::Rounding;
 
     fn contract() -> ContractSpec {
@@ -507,6 +505,44 @@ mod tests {
             Err(DomainError::InvalidInstrument(
                 "linear contract settlement asset must equal quote asset"
             ))
+        );
+    }
+
+    #[test]
+    fn rejects_overflowing_margin_tier_derivation() {
+        let mut overflow = contract();
+        overflow.margin_tiers = vec![
+            MarginTier {
+                notional_floor: Amount::ZERO,
+                notional_cap: Amount::new(i128::MAX - 1),
+                max_leverage: 125,
+                mmr_bps: Bps::new(0),
+                maintenance_amount: Amount::ZERO,
+            },
+            MarginTier {
+                notional_floor: Amount::new(i128::MAX - 1),
+                notional_cap: Amount::new(i128::MAX),
+                max_leverage: 100,
+                mmr_bps: Bps::new(10_000),
+                maintenance_amount: Amount::ZERO,
+            },
+        ];
+        assert_eq!(overflow.validate(), Err(DomainError::Overflow));
+    }
+
+    #[test]
+    fn rejects_invalid_size_during_decimal_formatting() {
+        let mut invalid = instrument();
+        invalid.tick_size = 0;
+        assert_eq!(
+            invalid.price_to_decimal(Price::new(1).unwrap(), Scale::ZERO),
+            Err(DomainError::InvalidInstrument("tick_size must be positive"))
+        );
+
+        invalid.lot_size = 0;
+        assert_eq!(
+            invalid.qty_to_decimal(Qty::new(1).unwrap(), Scale::ZERO),
+            Err(DomainError::InvalidInstrument("lot_size must be positive"))
         );
     }
 

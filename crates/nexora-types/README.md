@@ -64,3 +64,17 @@ cargo doc -p nexora-types --no-deps
 
 The release-only invariant test executes ten million randomized ledger-style
 amount operations. The benchmark covers hot conversion and decimal paths.
+
+Financial branch coverage is enforced on Linux with `cargo-llvm-cov` and the
+nightly toolchain pinned in CI. The financial gate covers `convert.rs`,
+`decimal.rs`, `fee.rs`, `instrument.rs`, `money.rs`, and `rounding.rs`:
+
+```sh
+cargo +nightly-2026-10-01 llvm-cov --branch -p nexora-types --all-features \
+  --ignore-filename-regex='(^|/)(tests|benches|fuzz)/' \
+  --json --output-path coverage.json
+python3 scripts/check_financial_coverage.py coverage.json
+```
+
+Native libFuzzer smoke verification runs on Linux for the decimal and instrument
+targets; see `fuzz/README.md` for bounded CI and longer-campaign commands.

@@ -47,9 +47,9 @@ pub fn div_round(
     let quotient = numerator
         .checked_div(denominator)
         .ok_or(DomainError::Overflow)?;
-    let remainder = numerator
-        .checked_rem(denominator)
-        .ok_or(DomainError::Overflow)?;
+    // `checked_div` above has already rejected the only case in which this
+    // remainder can overflow (`i128::MIN % -1`).
+    let remainder = numerator % denominator;
     if remainder == 0 {
         return Ok(quotient);
     }
@@ -58,10 +58,9 @@ pub fn div_round(
         Rounding::Down => 0,
         Rounding::Up => away_from_zero(numerator, denominator),
         Rounding::HalfUp => {
-            let twice_remainder = remainder
-                .unsigned_abs()
-                .checked_mul(2)
-                .ok_or(DomainError::Overflow)?;
+            // A non-zero remainder is strictly smaller than |denominator|,
+            // which is at most 2^127, so doubling it cannot overflow u128.
+            let twice_remainder = remainder.unsigned_abs() * 2;
             if twice_remainder >= denominator.unsigned_abs() {
                 away_from_zero(numerator, denominator)
             } else {
@@ -70,9 +69,9 @@ pub fn div_round(
         }
     };
 
-    quotient
-        .checked_add(adjustment)
-        .ok_or(DomainError::Overflow)
+    // With a non-zero remainder, the result moves at most one step away from
+    // zero inside the magnitude of the numerator, so this addition is exact.
+    Ok(quotient + adjustment)
 }
 
 /// Exact `(left * right) / divisor` with checked intermediate arithmetic.

@@ -38,7 +38,7 @@ pub fn quote_amount(
         .checked_mul(i128::from(lot_size_atomic))
         .ok_or(DomainError::Overflow)?;
 
-    let denominator = base_decimals.factor_i128()?;
+    let denominator = base_decimals.factor_i128_exact();
     div_round(numerator, denominator, rounding).map(Amount::new)
 }
 
@@ -166,6 +166,32 @@ mod tests {
                 Price::new(i64::MAX).unwrap(),
                 Qty::new(i64::MAX).unwrap(),
                 i64::MAX,
+                i64::MAX,
+                Scale::ZERO,
+                Rounding::Down
+            ),
+            Err(DomainError::Overflow)
+        );
+    }
+
+    #[test]
+    fn rejects_overflow_at_each_intermediate_product() {
+        assert_eq!(
+            quote_amount(
+                Price::new(i64::MAX).unwrap(),
+                Qty::new(3).unwrap(),
+                i64::MAX,
+                1,
+                Scale::ZERO,
+                Rounding::Down
+            ),
+            Err(DomainError::Overflow)
+        );
+        assert_eq!(
+            quote_amount(
+                Price::new(i64::MAX).unwrap(),
+                Qty::new(i64::MAX).unwrap(),
+                1,
                 i64::MAX,
                 Scale::ZERO,
                 Rounding::Down

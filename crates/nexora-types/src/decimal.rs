@@ -50,8 +50,21 @@ impl Scale {
     }
 
     /// Exact `10^scale` factor as an `i128`.
-    pub fn factor_i128(self) -> Result<i128, DomainError> {
-        i128::try_from(self.factor()).map_err(|_| DomainError::Overflow)
+    ///
+    /// The constructor limit of 18 means every valid scale fits `i128`; the
+    /// result type is retained for the public API.
+    pub const fn factor_i128(self) -> Result<i128, DomainError> {
+        Ok(self.factor_i128_exact())
+    }
+
+    pub(crate) const fn factor_i128_exact(self) -> i128 {
+        let mut factor = 1_i128;
+        let mut index = 0_u8;
+        while index < self.0 {
+            factor *= 10;
+            index += 1;
+        }
+        factor
     }
 }
 
@@ -235,6 +248,22 @@ mod tests {
         );
         assert_eq!(
             parse_scaled("999999999999999999999999999999999999999", scale(0)),
+            Err(DomainError::Overflow)
+        );
+    }
+
+    #[test]
+    fn rejects_magnitudes_outside_i128_and_padding_overflow() {
+        assert_eq!(
+            parse_scaled("170141183460469231731687303715884105728", scale(0)),
+            Err(DomainError::Overflow)
+        );
+        assert_eq!(
+            parse_scaled("-170141183460469231731687303715884105729", scale(0)),
+            Err(DomainError::Overflow)
+        );
+        assert_eq!(
+            parse_scaled(&i128::MAX.to_string(), scale(18)),
             Err(DomainError::Overflow)
         );
     }
