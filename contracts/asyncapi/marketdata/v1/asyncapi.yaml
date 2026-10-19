@@ -1,0 +1,83 @@
+asyncapi: 3.1.0
+info:
+  title: NEXORA Raw Market Data Stream
+  version: 0.1.0
+  description: |
+    B01 contract skeleton for raw venue market data. Raw messages are
+    append-only, preserve the venue payload, and are never rewritten by the
+    display layer. Trading and canonical market-data channels are added in
+    later phases.
+  contact:
+    name: NEXORA Platform Engineering
+servers:
+  local:
+    host: localhost:9092
+    protocol: kafka
+    description: Local Redpanda (Kafka API)
+channels:
+  rawVenueTrades:
+    address: "market.raw.{venue}.{symbol}"
+    description: Raw public trades exactly as received from a venue adapter.
+    parameters:
+      venue:
+        description: Lowercase venue identifier, for example bybit or mexc.
+        examples:
+          - bybit
+      symbol:
+        description: Venue-native symbol.
+        examples:
+          - BTCUSDT
+    messages:
+      rawTrade:
+        $ref: "#/components/messages/RawVenueTrade"
+operations:
+  consumeRawVenueTrades:
+    action: receive
+    channel:
+      $ref: "#/channels/rawVenueTrades"
+    summary: Persist raw venue trades without transformation.
+components:
+  messages:
+    RawVenueTrade:
+      name: RawVenueTrade
+      title: Raw venue trade
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/RawVenueTrade"
+  schemas:
+    RawVenueTrade:
+      type: object
+      required:
+        - venue
+        - venue_symbol
+        - venue_trade_id
+        - price
+        - quantity
+        - venue_event_time_unix_nanos
+        - received_time_unix_nanos
+        - payload_sha256
+      properties:
+        venue:
+          type: string
+        venue_symbol:
+          type: string
+        venue_trade_id:
+          type: string
+        price:
+          type: string
+          description: Exact decimal string as received.
+        quantity:
+          type: string
+          description: Exact decimal string as received.
+        venue_event_time_unix_nanos:
+          type: integer
+          format: int64
+        received_time_unix_nanos:
+          type: integer
+          format: int64
+        payload_sha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        raw_payload_base64:
+          type: string
+          contentEncoding: base64

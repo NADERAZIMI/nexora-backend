@@ -1,0 +1,214 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Test
+        run: cargo test --workspace --all-features
+      - name: Build
+        run: cargo build --workspace --all-targets
+
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          cache-dependency-path: |
+            libs/go/go.sum
+            services/hello-service/go.sum
+      - name: Format
+        run: |
+          unformatted="$(gofmt -l libs/go services/hello-service)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt required for:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: Vet
+        run: |
+          (cd libs/go && go vet ./...)
+          (cd services/hello-service && go vet ./...)
+      - name: Test
+        run: |
+          (cd libs/go && go test -race ./...)
+          (cd services/hello-service && go test -race ./...)
+      - name: Build
+        run: |
+          (cd libs/go && go build ./...)
+          (cd services/hello-service && go build ./...)
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+          working-directory: libs/go
+      - name: golangci-lint hello-service
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+          working-directory: services/hello-service
+
+  contracts:
+    name: Contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: "1.74.0"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+      - name: Install protobuf generators
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Lint and build protobuf
+        working-directory: contracts
+        run: |
+          buf lint
+          buf build
+          buf generate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+          cache: npm
+      - name: Install tooling
+        run: npm ci --ignore-scripts
+      - name: OpenAPI and AsyncAPI
+        run: npm run lint:contracts
+      - name: Upload generated Go stubs
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-go
+          path: gen/go
+          retention-days: 7
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+      - name: Dependency and license policy
+        uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+      - name: Go vulnerability scan
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          (cd libs/go && govulncheck ./...)
+          (cd services/hello-service && govulncheck ./...)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+          cache: npm
+      - name: Node dependency audit
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=critical
+      - name: Filesystem scan
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: "true"
+          skip-dirs: node_modules,target,gen,.git
+      - name: SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: reports/B01/sbom.spdx.json
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: reports/B01/sbom.spdx.json
+          retention-days: 90
+
+  sast:
+    name: SAST
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Semgrep
+        run: pip install semgrep
+      - name: Scan
+        run: semgrep scan --config auto --error
+
+  compose:
+    name: Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint Go Dockerfile
+        uses: hadolint/hadolint-action@v3.5.0
+        with:
+          dockerfile: services/hello-service/Dockerfile
+      - name: Lint Rust Dockerfile
+        uses: hadolint/hadolint-action@v3.5.0
+        with:
+          dockerfile: services/core-template/Dockerfile
+      - name: Validate compose model
+        run: docker compose config --quiet
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+          cache: npm
+      - name: Install tooling
+        run: npm ci --ignore-scripts
+      - name: Markdown lint
+        run: npm run lint:md

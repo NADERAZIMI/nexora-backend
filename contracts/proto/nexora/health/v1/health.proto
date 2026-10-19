@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package nexora.health.v1;
+
+option go_package = "github.com/nexora-exchange/nexora/gen/go/nexora/health/v1;healthv1";
+
+// HealthService exposes liveness and readiness for internal probes.
+service HealthService {
+  // Check returns the current liveness/readiness state.
+  rpc Check(CheckRequest) returns (CheckResponse);
+
+  // Watch streams state changes until the client disconnects.
+  rpc Watch(WatchRequest) returns (stream WatchResponse);
+}
+
+// ServingStatus is the health state of a service.
+enum ServingStatus {
+  SERVING_STATUS_UNSPECIFIED = 0;
+  SERVING_STATUS_SERVING = 1;
+  SERVING_STATUS_NOT_SERVING = 2;
+}
+
+// CheckRequest asks for a component's health.
+message CheckRequest {
+  string service = 1;
+}
+
+// CheckResponse reports health and build metadata.
+message CheckResponse {
+  ServingStatus status = 1;
+  string service = 2;
+  string version = 3;
+}
+
+// WatchRequest subscribes to health changes.
+message WatchRequest {
+  string service = 1;
+}
+
+// WatchResponse is a health state change.
+message WatchResponse {
+  ServingStatus status = 1;
+  string service = 2;
+}

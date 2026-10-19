@@ -1,0 +1,134 @@
+openapi: 3.1.0
+info:
+  title: NEXORA Edge API
+  version: 0.1.0
+  description: |
+    B01 edge contract skeleton. It exposes only health and a trivial hello
+    endpoint. Trading, account, and market-data endpoints are added in later
+    phases. All monetary values will be encoded as exact decimal strings.
+  contact:
+    name: NEXORA Platform Engineering
+servers:
+  - url: http://localhost:8080
+    description: Local development
+tags:
+  - name: System
+    description: Health and build metadata
+paths:
+  /healthz:
+    get:
+      operationId: getLiveness
+      tags: [System]
+      summary: Liveness probe
+      description: Reports whether the process is alive. Never used for traffic routing.
+      responses:
+        "200":
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: Process is not alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /readyz:
+    get:
+      operationId: getReadiness
+      tags: [System]
+      summary: Readiness probe
+      description: Reports whether the service is ready to accept traffic.
+      responses:
+        "200":
+          description: Service is ready to accept traffic
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/hello:
+    get:
+      operationId: getHello
+      tags: [System]
+      summary: Baseline hello endpoint
+      description: Returns a static message and the correlation ID. No trading data.
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Baseline response
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Hello"
+        "500":
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  parameters:
+    RequestId:
+      name: X-Request-ID
+      in: header
+      required: false
+      description: Caller-supplied correlation ID; generated when absent or invalid.
+      schema:
+        type: string
+        maxLength: 128
+        pattern: "^[A-Za-z0-9._:-]{1,128}$"
+  headers:
+    RequestId:
+      description: Correlation ID for this request.
+      schema:
+        type: string
+  schemas:
+    Health:
+      type: object
+      required: [status, service, version]
+      properties:
+        status:
+          type: string
+          enum: [ok, ready]
+        service:
+          type: string
+        version:
+          type: string
+    Hello:
+      type: object
+      required: [message, service, request_id]
+      properties:
+        message:
+          type: string
+        service:
+          type: string
+        request_id:
+          type: string
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable error code.
+            message:
+              type: string
+            request_id:
+              type: string
+            retryable:
+              type: boolean

@@ -1,0 +1,21 @@
+{
+  "name": "nexora-backend-tooling",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Documentation and contract tooling for the NEXORA backend",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "lint:md": "markdownlint-cli2",
+    "lint:openapi": "spectral lint \"contracts/openapi/**/*.yaml\" --ruleset contracts/.spectral.yaml --fail-severity=warn",
+    "lint:asyncapi": "node scripts/validate-asyncapi.mjs \"contracts/asyncapi/**/*.yaml\"",
+    "lint:contracts": "npm run lint:openapi && npm run lint:asyncapi",
+    "security:npm": "npm audit --audit-level=critical"
+  },
+  "devDependencies": {
+    "@asyncapi/parser": "^3.6.6",
+    "@stoplight/spectral-cli": "^6.17.0",
+    "markdownlint-cli2": "^0.23.3"
+  }
+}

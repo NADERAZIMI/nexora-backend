@@ -1,0 +1,17 @@
+# Owners are reviewed automatically on pull requests.
+# Replace the placeholder team with the real GitHub team before enabling
+# branch protection.
+
+* @nexora-exchange/platform
+
+/contracts/ @nexora-exchange/platform @nexora-exchange/security
+/crates/ @nexora-exchange/core
+/services/ @nexora-exchange/platform
+/libs/go/ @nexora-exchange/platform
+/infra/ @nexora-exchange/platform @nexora-exchange/security
+/.github/ @nexora-exchange/platform @nexora-exchange/security
+/docs/security/ @nexora-exchange/security
+/docs/adr/ @nexora-exchange/architecture
+/compose.yaml @nexora-exchange/platform
+/Cargo.toml @nexora-exchange/core
+/go.work @nexora-exchange/platform

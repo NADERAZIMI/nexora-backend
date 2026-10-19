@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package nexora.display.v1;
+
+import "nexora/common/v1/types.proto";
+
+option go_package = "github.com/nexora-exchange/nexora/gen/go/nexora/display/v1;displayv1";
+
+// MarketDisplayConfig reserves the future admin-controlled Market Pricing &
+// Display Configuration capability.
+//
+// SECURITY BOUNDARY: this package is presentation-only. It MUST NOT be imported
+// by matching, ledger, settlement, risk, funding, liquidation, or ADL modules.
+// Display metrics are never inputs to financial calculations.
+message MarketDisplayConfig {
+  string symbol = 1;
+  bool enabled = 2;
+
+  // nexora_quote is an admin-controlled NEXORA quote. It is derived from raw
+  // venue data under the configured methodology and is always labelled as a
+  // NEXORA quote, never as an executed venue price.
+  nexora.common.v1.Decimal nexora_quote = 3;
+  string quote_methodology = 4;
+
+  // Display-only metrics. Every field carries an explicit source label.
+  DisplayMetrics display_metrics = 5;
+
+  uint64 version = 6;
+  string updated_by = 7;
+  int64 effective_from_unix_nanos = 8;
+}
+
+// DisplayMetricSource states whether a displayed metric is executed or
+// synthetic. Synthetic values MUST be visibly labelled in every client.
+enum DisplayMetricSource {
+  DISPLAY_METRIC_SOURCE_UNSPECIFIED = 0;
+  DISPLAY_METRIC_SOURCE_EXECUTED = 1;
+  DISPLAY_METRIC_SOURCE_SYNTHETIC = 2;
+}
+
+// DisplayMetrics are presentation-only values.
+message DisplayMetrics {
+  DisplayMetricSource volume_source = 1;
+
+  // synthetic_volume_multiplier applies only when volume_source is SYNTHETIC.
+  // A synthetic volume MUST NOT be presented as executed trading volume.
+  nexora.common.v1.Decimal synthetic_volume_multiplier = 2;
+
+  // synthetic_volume_label is mandatory when any synthetic metric is exposed.
+  string synthetic_volume_label = 3;
+
+  // display_only is always true for this message. It exists so consumers can
+  // reject accidental use in financial paths.
+  bool display_only = 4;
+}

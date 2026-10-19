@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package nexora.marketdata.v1;
+
+import "nexora/common/v1/types.proto";
+
+option go_package = "github.com/nexora-exchange/nexora/gen/go/nexora/marketdata/v1;marketdatav1";
+
+// RawVenueTrade preserves venue data exactly as received. Raw records are
+// append-only and MUST NOT be rewritten by display or presentation logic.
+message RawVenueTrade {
+  string venue = 1;
+  string venue_symbol = 2;
+  string venue_trade_id = 3;
+  nexora.common.v1.Decimal price = 4;
+  nexora.common.v1.Decimal quantity = 5;
+  int64 venue_event_time_unix_nanos = 6;
+  int64 received_time_unix_nanos = 7;
+  bytes raw_payload = 8;
+  string payload_sha256 = 9;
+  string ingest_id = 10;
+}
+
+// RawVenueBookSnapshot preserves a venue book snapshot exactly as received.
+message RawVenueBookSnapshot {
+  string venue = 1;
+  string venue_symbol = 2;
+  int64 venue_sequence = 3;
+  repeated RawVenueBookLevel bids = 4;
+  repeated RawVenueBookLevel asks = 5;
+  int64 venue_event_time_unix_nanos = 6;
+  int64 received_time_unix_nanos = 7;
+  bytes raw_payload = 8;
+  string payload_sha256 = 9;
+  string ingest_id = 10;
+}
+
+// RawVenueBookLevel is one price level in a raw snapshot.
+message RawVenueBookLevel {
+  nexora.common.v1.Decimal price = 1;
+  nexora.common.v1.Decimal quantity = 2;
+}

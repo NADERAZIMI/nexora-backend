@@ -1,0 +1,135 @@
+syntax = "proto3";
+
+package nexora.custody.v1;
+
+import "nexora/common/v1/types.proto";
+
+option go_package = "github.com/nexora-exchange/nexora/gen/go/nexora/custody/v1;custodyv1";
+
+// CustodyProvider is the provider-neutral contract for third-party wallet and
+// custody integrations. Implementations MUST keep private keys inside the
+// provider boundary and MUST support idempotent signing requests.
+service CustodyProviderService {
+  // GetCapabilities reports supported chains and signing modes.
+  rpc GetCapabilities(GetCapabilitiesRequest) returns (GetCapabilitiesResponse);
+
+  // DeriveAddress returns a deposit address for an account and network.
+  rpc DeriveAddress(DeriveAddressRequest) returns (DeriveAddressResponse);
+
+  // GetBalance returns the provider's view of an address balance.
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
+
+  // SignTransaction requests a signature over an already-validated payload.
+  rpc SignTransaction(SignTransactionRequest) returns (SignTransactionResponse);
+
+  // GetTransactionStatus reports broadcast and confirmation state.
+  rpc GetTransactionStatus(GetTransactionStatusRequest) returns (GetTransactionStatusResponse);
+
+  // Health reports provider connectivity.
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+// GetCapabilitiesRequest selects a provider.
+message GetCapabilitiesRequest {
+  string provider = 1;
+}
+
+// GetCapabilitiesResponse describes provider capabilities.
+message GetCapabilitiesResponse {
+  string provider = 1;
+  repeated string chains = 2;
+  uint32 max_signing_quorum = 3;
+  bool supports_hsm = 4;
+  bool supports_mpc = 5;
+}
+
+// DeriveAddressRequest asks for a deposit address.
+message DeriveAddressRequest {
+  string provider = 1;
+  string account_id = 2;
+  string chain = 3;
+  string asset = 4;
+}
+
+// DeriveAddressResponse returns a derived address.
+message DeriveAddressResponse {
+  string address = 1;
+  string derivation_path = 2;
+  string memo = 3;
+}
+
+// GetBalanceRequest asks for an address balance.
+message GetBalanceRequest {
+  string provider = 1;
+  string chain = 2;
+  string asset = 3;
+  string address = 4;
+}
+
+// GetBalanceResponse reports a confirmed balance.
+message GetBalanceResponse {
+  nexora.common.v1.Decimal confirmed = 1;
+  nexora.common.v1.Decimal pending = 2;
+  uint64 block_height = 3;
+}
+
+// ApprovalContext carries maker/checker evidence for a signing request.
+message ApprovalContext {
+  repeated string approval_ids = 1;
+  uint32 required_quorum = 2;
+  string policy_version = 3;
+}
+
+// SignTransactionRequest asks the provider to sign a validated payload.
+message SignTransactionRequest {
+  string provider = 1;
+  string chain = 2;
+  string asset = 3;
+  bytes unsigned_payload = 4;
+  string payload_sha256 = 5;
+  string idempotency_key = 6;
+  ApprovalContext approval = 7;
+  string requested_by = 8;
+}
+
+// SignTransactionResponse returns a signed payload and signer identity.
+message SignTransactionResponse {
+  bytes signed_payload = 1;
+  string signed_payload_sha256 = 2;
+  string provider_transaction_id = 3;
+  repeated string signer_ids = 4;
+}
+
+// GetTransactionStatusRequest queries a signed transaction.
+message GetTransactionStatusRequest {
+  string provider = 1;
+  string chain = 2;
+  string provider_transaction_id = 3;
+}
+
+// TransactionStatus is the broadcast lifecycle state.
+enum TransactionStatus {
+  TRANSACTION_STATUS_UNSPECIFIED = 0;
+  TRANSACTION_STATUS_PENDING = 1;
+  TRANSACTION_STATUS_BROADCAST = 2;
+  TRANSACTION_STATUS_CONFIRMED = 3;
+  TRANSACTION_STATUS_FAILED = 4;
+}
+
+// GetTransactionStatusResponse reports transaction state.
+message GetTransactionStatusResponse {
+  TransactionStatus status = 1;
+  uint64 confirmations = 2;
+  string transaction_hash = 3;
+}
+
+// HealthRequest asks for provider health.
+message HealthRequest {
+  string provider = 1;
+}
+
+// HealthResponse reports provider health.
+message HealthResponse {
+  bool healthy = 1;
+  string detail = 2;
+}

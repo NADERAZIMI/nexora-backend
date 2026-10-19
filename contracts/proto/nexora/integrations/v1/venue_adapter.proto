@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package nexora.integrations.v1;
+
+import "nexora/common/v1/types.proto";
+import "nexora/marketdata/v1/raw_market_data.proto";
+
+option go_package = "github.com/nexora-exchange/nexora/gen/go/nexora/integrations/v1;integrationsv1";
+
+// VenueAdapter is the provider-neutral contract for external market-data
+// venues such as Bybit and MEXC. Adapters are read-only: they ingest raw data
+// and never authorize orders, settlement, or risk actions.
+service VenueAdapterService {
+  // GetCapabilities lists supported data types and limits.
+  rpc GetCapabilities(GetCapabilitiesRequest) returns (GetCapabilitiesResponse);
+
+  // ListInstruments returns the venue's current instrument catalog.
+  rpc ListInstruments(ListInstrumentsRequest) returns (ListInstrumentsResponse);
+
+  // StreamTrades streams raw public trades.
+  rpc StreamTrades(StreamTradesRequest) returns (stream StreamTradesResponse);
+
+  // StreamBook streams raw order-book snapshots.
+  rpc StreamBook(StreamBookRequest) returns (stream StreamBookResponse);
+
+  // Health reports adapter connectivity and staleness.
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+// GetCapabilitiesRequest selects a venue.
+message GetCapabilitiesRequest {
+  string venue = 1;
+}
+
+// GetCapabilitiesResponse describes adapter capabilities.
+message GetCapabilitiesResponse {
+  string venue = 1;
+  bool supports_trades = 2;
+  bool supports_book = 3;
+  bool supports_instruments = 4;
+  uint32 max_streams = 5;
+}
+
+// ListInstrumentsRequest selects a venue.
+message ListInstrumentsRequest {
+  string venue = 1;
+}
+
+// ListInstrumentsResponse returns venue instruments.
+message ListInstrumentsResponse {
+  repeated VenueInstrument instruments = 1;
+}
+
+// VenueInstrument is an instrument as reported by a venue.
+message VenueInstrument {
+  string venue_symbol = 1;
+  string base_asset = 2;
+  string quote_asset = 3;
+  nexora.common.v1.Decimal tick_size = 4;
+  nexora.common.v1.Decimal lot_size = 5;
+  bool trading_enabled = 6;
+}
+
+// StreamTradesRequest subscribes to raw trades.
+message StreamTradesRequest {
+  string venue = 1;
+  repeated string venue_symbols = 2;
+}
+
+// StreamTradesResponse wraps one raw trade.
+message StreamTradesResponse {
+  nexora.marketdata.v1.RawVenueTrade trade = 1;
+}
+
+// StreamBookRequest subscribes to raw book snapshots.
+message StreamBookRequest {
+  string venue = 1;
+  repeated string venue_symbols = 2;
+}
+
+// StreamBookResponse wraps one raw book snapshot.
+message StreamBookResponse {
+  nexora.marketdata.v1.RawVenueBookSnapshot snapshot = 1;
+}
+
+// HealthRequest asks for adapter health.
+message HealthRequest {
+  string venue = 1;
+}
+
+// HealthResponse reports adapter health.
+message HealthResponse {
+  bool healthy = 1;
+  int64 last_message_time_unix_nanos = 2;
+  string detail = 3;
+}

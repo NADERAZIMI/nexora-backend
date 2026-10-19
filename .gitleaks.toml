@@ -1,0 +1,32 @@
+title = "NEXORA backend secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "nexora-custody-key-material"
+description = "Custody private key material or seed phrase"
+regex = '''(?i)(seed[_ -]?phrase|private[_ -]?key)\s*[:=]\s*["'][A-Za-z0-9 +/]{32,}["']'''
+tags = ["key", "custody"]
+
+[[rules]]
+id = "nexora-api-secret"
+description = "Hard-coded API secret"
+regex = '''(?i)(api[_ -]?secret|client[_ -]?secret)\s*[:=]\s*["'][A-Za-z0-9_\-]{24,}["']'''
+tags = ["secret"]
+
+[allowlist]
+description = "Documentation examples and development-only placeholders"
+paths = [
+  '''docs/architecture/.*''',
+  '''contracts/.*\.md''',
+  '''\.env\.example''',
+  '''reports/.*\.md''',
+  '''node_modules/.*''',
+  '''target/.*''',
+  '''gen/.*''',
+]
+regexes = [
+  '''nexora_dev_only''',
+  '''REPLACE_ME''',
+]

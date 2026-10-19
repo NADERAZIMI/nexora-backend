@@ -1,0 +1,12 @@
+extends:
+  - spectral:oas
+rules:
+  operation-operationId: error
+  operation-tags: error
+  operation-description: warn
+  info-contact: warn
+  openapi-tags: warn
+  no-eval-in-markdown: error
+  no-script-tags-in-markdown: error
+  oas3-valid-media-example: error
+  oas3-valid-schema-example: error

@@ -1,0 +1,43 @@
+# Tooling and build output
+.tools/
+target/
+bin/
+dist/
+gen/
+node_modules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.seed
+secrets/
+
+# Test and coverage output
+coverage/
+*.out
+*.test
+*.prof
+test-results/
+
+# IDE and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local infrastructure data
+.infrastructure/
+data/
+*.log
+
+# Rust
+**/*.rs.bk
+
+# Go
+vendor/

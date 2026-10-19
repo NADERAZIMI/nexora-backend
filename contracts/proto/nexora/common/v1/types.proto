@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package nexora.common.v1;
+
+option go_package = "github.com/nexora-exchange/nexora/gen/go/nexora/common/v1;commonv1";
+
+// Decimal is an exact base-10 value encoded as a canonical string.
+//
+// The string MUST NOT use exponent notation, a leading plus sign, or
+// insignificant trailing zeros. Conversion to integer atomic units is the
+// responsibility of the domain layer (B02).
+message Decimal {
+  string value = 1;
+}
+
+// PageRequest is the standard cursor pagination request.
+message PageRequest {
+  uint32 limit = 1;
+  string cursor = 2;
+}
+
+// PageResponse is the standard cursor pagination response.
+message PageResponse {
+  string next_cursor = 1;
+  bool has_more = 2;
+}
+
+// Error is the stable machine-readable error envelope.
+message Error {
+  string code = 1;
+  string message = 2;
+  string request_id = 3;
+  bool retryable = 4;
+  map<string, string> details = 5;
+}

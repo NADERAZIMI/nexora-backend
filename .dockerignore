@@ -1,0 +1,13 @@
+.git
+.github
+.tools
+target
+gen
+node_modules
+coverage
+reports
+docs
+*.log
+.env
+.env.*
+!.env.example
