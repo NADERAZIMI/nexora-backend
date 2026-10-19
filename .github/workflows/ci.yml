@@ -34,6 +34,10 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: Test
         run: cargo test --workspace --all-features
+      - name: Financial invariant gate
+        run: cargo test --release -p nexora-types --test invariants -- --ignored
+      - name: Domain crate documentation
+        run: cargo doc -p nexora-types --no-deps
       - name: Build
         run: cargo build --workspace --all-targets
 

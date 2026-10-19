@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/nexora-config",
     "crates/nexora-telemetry",
+    "crates/nexora-types",
     "services/core-template",
 ]
 
@@ -24,6 +25,7 @@ opentelemetry_sdk = { version = "0.33.1", features = ["trace"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.145"
 thiserror = "2.0.21"
+time = { version = "0.3.44", features = ["formatting", "parsing"] }
 tokio = { version = "1.53.3", features = ["macros", "net", "rt-multi-thread", "signal", "time"] }
 tower = { version = "0.5.3", features = ["util"] }
 tower-http = { version = "0.6.11", features = [
@@ -37,7 +39,7 @@ tower-http = { version = "0.6.11", features = [
 tracing = "0.1.44"
 tracing-opentelemetry = "0.34.0"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
-uuid = { version = "1.28.0", features = ["v4"] }
+uuid = { version = "1.28.0", features = ["v4", "v7"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -45,8 +47,9 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 float_arithmetic = "deny"
 float_cmp = "deny"
-cast_possible_truncation = "warn"
-cast_sign_loss = "warn"
+cast_possible_truncation = "deny"
+cast_sign_loss = "deny"
+cast_possible_wrap = "deny"
 
 [profile.release]
 codegen-units = 1

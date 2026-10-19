@@ -4,8 +4,8 @@ CARGO ?= cargo
 NPM ?= npm
 COMPOSE ?= docker compose
 
-.PHONY: help bootstrap dev dev-infra app-up down logs fmt fmt-check lint test build \
-	contracts docs-check security check clean
+.PHONY: help bootstrap dev dev-infra app-up down logs fmt fmt-check lint test \
+	domain-gate bench-domain build contracts docs-check security check clean
 
 help:
 	@echo "NEXORA backend commands"
@@ -14,7 +14,9 @@ help:
 	@echo "  make down         Stop the local stack"
 	@echo "  make fmt          Format Go and Rust"
 	@echo "  make lint         Format check, vet, clippy"
-	@echo "  make test         Unit tests for Go and Rust"
+	@echo "  make domain-gate  Domain tests and 10M-operation invariant gate"
+	@echo "  make bench-domain Conversion microbenchmarks"
+	@echo "  make test         Unit tests for Go and Rust, plus domain invariants"
 	@echo "  make build        Build Rust workspace and Go services"
 	@echo "  make contracts    Lint and generate contracts"
 	@echo "  make docs-check   Markdown lint"
@@ -65,10 +67,17 @@ lint: fmt-check
 		cd ../../services/hello-service && golangci-lint run ./...; \
 	else echo "golangci-lint not installed; skipped"; fi
 
-test:
+test: domain-gate
 	$(CARGO) test --workspace --all-features
 	cd libs/go && $(GO) test -race ./...
 	cd services/hello-service && $(GO) test -race ./...
+
+domain-gate:
+	$(CARGO) test -p nexora-types --all-features
+	$(CARGO) test --release -p nexora-types --test invariants -- --ignored
+
+bench-domain:
+	$(CARGO) bench -p nexora-types --bench conversions
 
 build:
 	$(CARGO) build --workspace --all-targets

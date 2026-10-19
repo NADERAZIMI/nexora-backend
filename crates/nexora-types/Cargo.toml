@@ -1,0 +1,26 @@
+[package]
+name = "nexora-types"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Exact identifiers, money, time, errors, and instrument primitives for NEXORA financial cores"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+time.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+criterion = "0.7"
+proptest = "1.9"
+serde_json.workspace = true
+
+[[bench]]
+name = "conversions"
+harness = false

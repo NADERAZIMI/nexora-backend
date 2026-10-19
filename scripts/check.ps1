@@ -22,6 +22,7 @@ function Invoke-Step {
 Invoke-Step 'cargo fmt' { cargo fmt --all -- --check }
 Invoke-Step 'cargo clippy' { cargo clippy --workspace --all-targets --all-features -- -D warnings }
 Invoke-Step 'cargo test' { cargo test --workspace --all-features }
+Invoke-Step 'domain invariant gate' { cargo test --release -p nexora-types --test invariants -- --ignored }
 Invoke-Step 'gofmt' {
     $unformatted = & gofmt -l libs/go services/hello-service
     if ($unformatted) { throw "gofmt required for: $unformatted" }

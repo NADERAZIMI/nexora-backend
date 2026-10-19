@@ -3,10 +3,11 @@
 Production backend monorepo for the NEXORA centralized cryptocurrency exchange.
 
 This repository implements the architecture approved in B00
-([`docs/architecture/`](docs/architecture/)). Phase B01 establishes the
-engineering baseline only: build tooling, service skeletons, contracts,
-local infrastructure, security policy, and CI. It does **not** implement
-trading, ledger, wallet, or market-data functionality.
+([`docs/architecture/`](docs/architecture/)). B01 established the engineering
+baseline. B02 adds exact shared domain primitives: identifiers, money units,
+decimal parsing, rounding, unit conversion, time, error codes, and
+instrument/contract/margin/fee validation. It does **not** implement trading,
+ledger, wallet, or market-data functionality.
 
 ## Status
 
@@ -14,16 +15,17 @@ trading, ledger, wallet, or market-data functionality.
 |-------|-------|--------|
 | B00 | Architecture documentation | Complete |
 | B01 | Repository bootstrap and engineering baseline | Complete |
-| B02 | Money, time, and domain primitives | Not started |
+| B02 | Domain primitives | Complete |
 
-See [`reports/B01/REPORT.md`](reports/B01/REPORT.md) for the B01 acceptance
-evidence and known limitations.
+See [`reports/B01/REPORT.md`](reports/B01/REPORT.md) and
+[`reports/B02/REPORT.md`](reports/B02/REPORT.md) for acceptance evidence and
+known limitations.
 
 ## Repository layout
 
 ```text
 contracts/          Protobuf, OpenAPI, AsyncAPI, and lint configuration
-crates/             Shared Rust crates (config, telemetry)
+crates/             Shared Rust crates (config, telemetry, types)
 services/           Runnable services (Go edge services, Rust core services)
 libs/go/            Shared Go packages
 infra/              Local development infrastructure and collector config
@@ -86,7 +88,9 @@ accepts OTLP on `4317` (gRPC) and `4318` (HTTP).
 |---------|-------------|
 | `make dev` | Start local infrastructure and both sample services |
 | `make dev-infra` | Start Postgres, Redpanda, Redis, ClickHouse, MinIO, OTel |
-| `make test` | Run Go and Rust unit tests |
+| `make test` | Run Go and Rust unit tests plus domain invariants |
+| `make domain-gate` | Run domain tests and the 10M-operation invariant gate |
+| `make bench-domain` | Run conversion microbenchmarks |
 | `make lint` | Check formatting and run linters |
 | `make build` | Build all Rust crates and both services |
 | `make contracts` | Lint and generate contracts |
