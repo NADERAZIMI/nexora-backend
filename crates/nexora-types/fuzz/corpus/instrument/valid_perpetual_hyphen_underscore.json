@@ -1,0 +1,52 @@
+{
+  "symbol_id": 2,
+  "symbol": "BTC2-USDT_PERP",
+  "kind": "PERPETUAL",
+  "base": 1,
+  "quote": 2,
+  "tick_size": 100000,
+  "lot_size": 100000,
+  "min_qty": 1,
+  "max_qty": 1000000,
+  "min_notional": 5000000,
+  "max_notional": 1000000000000,
+  "price_band_bps": 500,
+  "maker_fee_bps": 2,
+  "taker_fee_bps": 5,
+  "contract": {
+    "contract_size": {
+      "numerator": 1,
+      "denominator": 1
+    },
+    "settlement_asset": 2,
+    "max_leverage": 125,
+    "margin_tiers": [
+      {
+        "notional_floor": 0,
+        "notional_cap": 50000000000,
+        "max_leverage": 125,
+        "mmr_bps": 40,
+        "maintenance_amount": 0
+      },
+      {
+        "notional_floor": 50000000000,
+        "notional_cap": 250000000000,
+        "max_leverage": 100,
+        "mmr_bps": 50,
+        "maintenance_amount": 50000000
+      },
+      {
+        "notional_floor": 250000000000,
+        "notional_cap": 1000000000000,
+        "max_leverage": 50,
+        "mmr_bps": 100,
+        "maintenance_amount": 1300000000
+      }
+    ],
+    "funding_interval_secs": 28800,
+    "funding_cap_bps": 75,
+    "liquidation_fee_bps": 50,
+    "adl_enabled": true
+  },
+  "status": "ACTIVE"
+}

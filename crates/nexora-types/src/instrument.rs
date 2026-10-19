@@ -407,6 +407,13 @@ mod tests {
     }
 
     #[test]
+    fn accepts_hyphen_underscore_and_digit_symbols() {
+        let mut instrument = instrument();
+        instrument.symbol = "BTC2-USDT_PERP".to_owned();
+        assert_eq!(instrument.validate(), Ok(()));
+    }
+
+    #[test]
     fn converts_decimal_prices_and_quantities_with_alignment() {
         let instrument = instrument();
         let price = instrument

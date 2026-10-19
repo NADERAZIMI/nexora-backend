@@ -38,10 +38,28 @@ def is_financial(filename: str) -> bool:
     return any(normalized.endswith(f"/src/{module}") for module in FINANCIAL_MODULES)
 
 
-def branch_count(branch: dict[str, Any]) -> int:
-    if "execution_count" in branch:
-        return int(branch["execution_count"])
-    return int(branch.get("count", 0))
+def branch_key(branch: Any) -> str:
+    """Return the stable source location that identifies a branch region."""
+    if isinstance(branch, dict):
+        return f"{branch.get('line_start', '?')}:{branch.get('column_start', '?')}"
+    if isinstance(branch, (list, tuple)) and len(branch) >= 2:
+        return f"{branch[0]}:{branch[1]}"
+    return "?"
+
+
+def branch_executed(branch: Any) -> bool:
+    """Whether the true edge of a branch region executed at least once.
+
+    ``llvm-cov export`` emits list entries shaped like
+    ``[line_start, column_start, line_end, column_end, execution_count,
+    fallthrough_count, ...]``. llvm-cov reports a branch region as covered when
+    its direct edge executed, so ``execution_count > 0`` is the predicate.
+    """
+    if isinstance(branch, dict):
+        return int(branch.get("execution_count", branch.get("count", 0))) > 0
+    if isinstance(branch, (list, tuple)) and len(branch) > 4:
+        return int(branch[4]) > 0
+    return False
 
 
 def main() -> int:
@@ -90,11 +108,15 @@ def main() -> int:
     uncovered: list[str] = []
     for entry in selected:
         filename = str(entry.get("filename", ""))
+        # The same source region can appear once per instrumented test binary,
+        # so a region is only uncovered when no instantiation executed it.
+        executed: dict[str, bool] = {}
         for branch in entry.get("branches", []):
-            if branch_count(branch) == 0:
-                line = branch.get("line_start", "?")
-                column = branch.get("column_start", "?")
-                uncovered.append(f"{filename}:{line}:{column}")
+            key = branch_key(branch)
+            executed[key] = executed.get(key, False) or branch_executed(branch)
+        for key, was_executed in executed.items():
+            if not was_executed:
+                uncovered.append(f"{filename}:{key}")
 
     if uncovered:
         print("Uncovered financial branches:")
