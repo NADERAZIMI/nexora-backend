@@ -73,12 +73,12 @@ jobs:
           (cd libs/go && go build ./...)
           (cd services/hello-service && go build ./...)
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
           version: latest
           working-directory: libs/go
       - name: golangci-lint hello-service
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
           version: latest
           working-directory: services/hello-service
