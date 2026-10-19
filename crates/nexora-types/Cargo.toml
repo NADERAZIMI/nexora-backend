@@ -17,7 +17,7 @@ time.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-criterion = "0.7"
+criterion = "0.8"
 proptest = "1.9"
 serde_json.workspace = true
 
