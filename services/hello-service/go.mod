@@ -7,7 +7,7 @@ toolchain go1.27.2
 require (
 	github.com/nexora-exchange/nexora/libs/go v0.0.0
 	github.com/prometheus/client_golang v1.25.0
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0
 )
 
 require (
