@@ -15,10 +15,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: fuzz-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   libfuzzer:
     name: libFuzzer smoke
