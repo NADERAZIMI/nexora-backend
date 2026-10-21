@@ -1,0 +1,137 @@
+syntax = "proto3";
+
+package nexora.identity.v1;
+
+option go_package = "github.com/nexora-exchange/nexora/gen/go/nexora/identity/v1;identityv1";
+
+// IdentityService is the internal mTLS-only identity contract. Public clients
+// use the REST API; this contract is for trusted platform services.
+service IdentityService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc Refresh(RefreshRequest) returns (RefreshResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse);
+  rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse);
+  rpc GetPermissions(GetPermissionsRequest) returns (GetPermissionsResponse);
+  rpc SubmitKyc(SubmitKycRequest) returns (SubmitKycResponse);
+}
+
+message TokenPair {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 access_expires_at_unix = 3;
+  int64 refresh_expires_at_unix = 4;
+  string session_id = 5;
+  bool mfa = 6;
+}
+
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+  string phone = 3;
+  string country_code = 4;
+  string device_fingerprint = 5;
+  string request_id = 6;
+}
+
+message RegisterResponse {
+  bool verification_required = 1;
+  string request_id = 2;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+  string totp_code = 3;
+  string recovery_code = 4;
+  string device_fingerprint = 5;
+  string request_id = 6;
+}
+
+message LoginResponse {
+  bool mfa_required = 1;
+  string mfa_token = 2;
+  repeated string methods = 3;
+  TokenPair tokens = 4;
+  string request_id = 5;
+}
+
+message RefreshRequest {
+  string refresh_token = 1;
+  string request_id = 2;
+}
+
+message RefreshResponse {
+  TokenPair tokens = 1;
+  string request_id = 2;
+}
+
+message LogoutRequest {
+  string access_token = 1;
+  string request_id = 2;
+}
+
+message LogoutResponse {
+  bool success = 1;
+  string request_id = 2;
+}
+
+message CreateApiKeyRequest {
+  string access_token = 1;
+  string label = 2;
+  repeated string scopes = 3;
+  repeated string ip_allowlist = 4;
+  string algorithm = 5;
+  string public_key = 6;
+  int32 expires_in_days = 7;
+  string request_id = 8;
+}
+
+message CreateApiKeyResponse {
+  string key_id = 1;
+  string key_prefix = 2;
+  string secret = 3;
+  string algorithm = 4;
+  repeated string scopes = 5;
+  repeated string ip_allowlist = 6;
+  int64 expires_at_unix = 7;
+  string request_id = 8;
+}
+
+message RevokeApiKeyRequest {
+  string access_token = 1;
+  string key_id = 2;
+  string request_id = 3;
+}
+
+message RevokeApiKeyResponse {
+  bool success = 1;
+  string request_id = 2;
+}
+
+message GetPermissionsRequest {
+  string access_token = 1;
+  string request_id = 2;
+}
+
+message GetPermissionsResponse {
+  string user_id = 1;
+  repeated string roles = 2;
+  repeated string permissions = 3;
+  repeated string scopes = 4;
+  string request_id = 5;
+}
+
+message SubmitKycRequest {
+  string access_token = 1;
+  string provider_ref = 2;
+  int32 level = 3;
+  string request_id = 4;
+}
+
+message SubmitKycResponse {
+  string case_id = 1;
+  string status = 2;
+  string request_id = 3;
+}

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 FROM golang:1.27-alpine AS build
 WORKDIR /src
-COPY go.work ./
+ENV GOWORK=off
 COPY libs/go/go.mod libs/go/go.sum ./libs/go/
 COPY services/hello-service/go.mod services/hello-service/go.sum ./services/hello-service/
 COPY libs/go ./libs/go

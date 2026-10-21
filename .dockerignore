@@ -2,7 +2,6 @@
 .github
 .tools
 target
-gen
 node_modules
 coverage
 reports

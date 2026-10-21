@@ -21,6 +21,8 @@ if (Require-Tool govulncheck) {
     try { govulncheck ./... } finally { Pop-Location }
     Push-Location services/hello-service
     try { govulncheck ./... } finally { Pop-Location }
+    Push-Location services/identity-service
+    try { govulncheck ./... } finally { Pop-Location }
 }
 if (Require-Tool trivy) {
     trivy fs --scanners vuln,secret,misconfig --exit-code 1 .

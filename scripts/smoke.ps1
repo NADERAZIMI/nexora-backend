@@ -10,6 +10,17 @@ $targets = @(
     @{ Name = 'core-template'; Base = 'http://localhost:8081' }
 )
 
+$identity = 'http://localhost:8082'
+foreach ($path in '/healthz', '/readyz') {
+    $response = Invoke-WebRequest -Uri "$identity$path" -UseBasicParsing
+    Write-Host "identity-service $path -> $($response.StatusCode) $($response.Content)"
+}
+$identityMetrics = Invoke-WebRequest -Uri "$identity/metrics" -UseBasicParsing
+if ($identityMetrics.Content -notmatch 'go_goroutines') {
+    throw 'identity-service metrics missing Go runtime series'
+}
+Write-Host 'identity-service /metrics -> ok'
+
 foreach ($target in $targets) {
     foreach ($path in '/healthz', '/readyz') {
         $response = Invoke-WebRequest -Uri "$($target.Base)$path" -UseBasicParsing

@@ -1,0 +1,1201 @@
+openapi: 3.1.0
+info:
+  title: NEXORA Identity API
+  version: 1.0.0
+  description: |
+    B03 secure identity and authentication contract. Credentials, refresh
+    tokens, API secrets, TOTP secrets, and WebAuthn challenges are returned only
+    in the response that creates them and are never retrievable afterwards.
+    All authenticated requests resolve PostgreSQL-authoritative session state,
+    so revocation takes effect on the next request.
+  contact:
+    name: NEXORA Platform Engineering
+servers:
+  - url: http://localhost:8081
+    description: Local development
+tags:
+  - name: System
+    description: Health, readiness, metrics, and signing-key discovery
+  - name: Registration
+    description: Account creation and contact verification
+  - name: Authentication
+    description: Password, MFA, refresh, logout, and session management
+  - name: MFA
+    description: TOTP, recovery codes, step-up, and WebAuthn ceremonies
+  - name: API Keys
+    description: Scoped machine credentials and signed-request authentication
+  - name: Identity
+    description: Current principal, permissions, and security status
+  - name: KYC
+    description: Customer identity-verification case references
+  - name: Administration
+    description: Authorized administrative identity controls
+security:
+  - bearerAuth: []
+paths:
+  /healthz:
+    get:
+      operationId: getIdentityLiveness
+      tags: [System]
+      summary: Liveness probe
+      description: Reports whether the identity process is alive.
+      security: []
+      responses:
+        "200":
+          description: Process is alive
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /readyz:
+    get:
+      operationId: getIdentityReadiness
+      tags: [System]
+      summary: Readiness probe
+      description: Reports whether PostgreSQL is reachable and the service can accept traffic.
+      security: []
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Service is not ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /v1/.well-known/jwks.json:
+    get:
+      operationId: getIdentityJWKS
+      tags: [System]
+      summary: JSON Web Key Set
+      description: Returns the Ed25519 public signing key. Private key material is never exposed.
+      security: []
+      responses:
+        "200":
+          description: Public signing keys
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JWKS" }
+  /v1/.well-known/openid-configuration:
+    get:
+      operationId: getIdentityOpenIDConfiguration
+      tags: [System]
+      summary: OpenID Provider metadata
+      description: Describes the supported EdDSA token and JWKS endpoints.
+      security: []
+      responses:
+        "200":
+          description: Provider metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /v1/auth/register:
+    post:
+      operationId: registerIdentity
+      tags: [Registration]
+      summary: Register an account
+      description: |
+        Creates a pending account with an Argon2id password credential and queues
+        email verification. Duplicate email or phone values return the same generic
+        accepted response to prevent account enumeration. Never returns a password hash.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+      responses:
+        "202":
+          description: Registration accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RegisterResponse" }
+        "400": { $ref: "#/components/responses/Validation" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /v1/auth/verify/email:
+    post:
+      operationId: verifyIdentityEmail
+      tags: [Registration]
+      summary: Verify an email address
+      description: Consumes a single-use email verification token and activates a pending account.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerificationRequest" }
+      responses:
+        "204": { description: Email verified }
+        "400": { $ref: "#/components/responses/Validation" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /v1/auth/verify/phone:
+    post:
+      operationId: verifyIdentityPhone
+      tags: [Registration]
+      summary: Verify a phone number
+      description: Consumes a single-use phone verification token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerificationRequest" }
+      responses:
+        "204": { description: Phone verified }
+        "400": { $ref: "#/components/responses/Validation" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /v1/auth/resend-verification:
+    post:
+      operationId: resendIdentityVerification
+      tags: [Registration]
+      summary: Resend contact verification
+      description: Always returns the same generic accepted response for known and unknown accounts.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResendVerificationRequest" }
+      responses:
+        "202": { description: Request accepted }
+        "400": { $ref: "#/components/responses/Validation" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /v1/auth/login:
+    post:
+      operationId: loginIdentity
+      tags: [Authentication]
+      summary: Password login
+      description: |
+        Verifies the password in constant time and applies database-backed
+        exponential backoff and lockout. If MFA is enrolled, returns a short-lived
+        single-use MFA challenge instead of tokens.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "401":
+          description: Invalid credentials, unverified email, or MFA challenge
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/MFAChallenge"
+                  - $ref: "#/components/schemas/Error"
+        "403":
+          description: Email verification required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /v1/auth/mfa/verify:
+    post:
+      operationId: verifyIdentityMFA
+      tags: [Authentication]
+      summary: Complete an MFA challenge
+      description: Consumes the MFA challenge and validates a TOTP or recovery code. Challenges are single-use.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MFAVerifyRequest" }
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /v1/auth/refresh:
+    post:
+      operationId: refreshIdentitySession
+      tags: [Authentication]
+      summary: Rotate a refresh token
+      description: Atomically rotates the refresh token. Reuse of a rotated token revokes the entire session family.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string, minLength: 32 }
+      responses:
+        "200":
+          description: Rotated token pair
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /v1/auth/password/reset/request:
+    post:
+      operationId: requestIdentityPasswordReset
+      tags: [Authentication]
+      summary: Request a password reset
+      description: Always returns accepted to prevent enumeration. Notification delivery happens through the encrypted outbox.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 320 }
+      responses:
+        "202": { description: Request accepted }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /v1/auth/password/reset/confirm:
+    post:
+      operationId: confirmIdentityPasswordReset
+      tags: [Authentication]
+      summary: Confirm a password reset
+      description: Consumes the reset token, replaces the Argon2id hash, and revokes all sessions and API keys.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token: { type: string, minLength: 32, maxLength: 256 }
+                newPassword: { type: string, minLength: 12, maxLength: 128 }
+      responses:
+        "204": { description: Password reset }
+        "400": { $ref: "#/components/responses/Validation" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /v1/auth/logout:
+    post:
+      operationId: logoutIdentitySession
+      tags: [Authentication]
+      summary: Revoke the current session
+      description: Revokes the current session and every refresh token in its family.
+      responses:
+        "204": { description: Session revoked }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/auth/session:
+    get:
+      operationId: getCurrentIdentitySession
+      tags: [Authentication]
+      summary: Get the current session
+      description: Returns the authenticated principal and redacted current-session metadata.
+      responses:
+        "200":
+          description: Current session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurrentSession" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/auth/security-status:
+    get:
+      operationId: getIdentitySecurityStatus
+      tags: [Authentication]
+      summary: Get security status
+      description: Reports MFA enrollment, session counts, active API keys, and recent security metadata.
+      responses:
+        "200":
+          description: Security status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/auth/sessions:
+    get:
+      operationId: listIdentitySessions
+      tags: [Authentication]
+      summary: List own sessions
+      description: Lists only sessions owned by the caller. Cross-account access is never possible.
+      responses:
+        "200":
+          description: Own sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessions]
+                properties:
+                  sessions:
+                    type: array
+                    items: { $ref: "#/components/schemas/SessionView" }
+                  requestId: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/auth/sessions/{sessionId}:
+    delete:
+      operationId: revokeIdentitySession
+      tags: [Authentication]
+      summary: Revoke one own session
+      description: Revokes a session only when it belongs to the caller. Other users receive a uniform not-found response.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "204": { description: Session revoked }
+        "400": { $ref: "#/components/responses/Validation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/auth/step-up:
+    post:
+      operationId: issueIdentityStepUp
+      tags: [MFA]
+      summary: Issue a step-up token
+      description: Verifies TOTP or a recovery code and returns a short-lived token bound to one action and the current session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StepUpRequest" }
+      responses:
+        "200":
+          description: Step-up token issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StepUpResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /v1/auth/2fa/totp/begin:
+    post:
+      operationId: beginIdentityTOTPEnrollment
+      tags: [MFA]
+      summary: Begin TOTP enrollment
+      description: Creates an unverified TOTP credential and returns the one-time provisioning secret.
+      responses:
+        "200":
+          description: TOTP enrollment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TOTPEnrollment" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/auth/2fa/totp/confirm:
+    post:
+      operationId: confirmIdentityTOTPEnrollment
+      tags: [MFA]
+      summary: Confirm TOTP enrollment
+      description: Verifies the first code, atomically marks the credential verified, and enables MFA for the account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [credentialId, code]
+              properties:
+                credentialId: { type: string, format: uuid }
+                code: { type: string, pattern: "^[0-9]{6}$" }
+      responses:
+        "204": { description: TOTP enrolled }
+        "400": { $ref: "#/components/responses/Validation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/auth/2fa/recovery-codes:
+    post:
+      operationId: generateIdentityRecoveryCodes
+      tags: [MFA]
+      summary: Generate recovery codes
+      description: Requires a step-up token for mfa:recovery_codes. Replaces all existing recovery codes; plaintext is returned once.
+      parameters:
+        - $ref: "#/components/parameters/StepUpToken"
+      responses:
+        "200":
+          description: One-time recovery codes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [codes]
+                properties:
+                  codes:
+                    type: array
+                    minItems: 10
+                    maxItems: 10
+                    items: { type: string }
+                  requestId: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /v1/auth/webauthn/register/begin:
+    post:
+      operationId: beginIdentityWebAuthnRegistration
+      tags: [MFA]
+      summary: Begin WebAuthn registration
+      description: Returns PublicKeyCredentialCreationOptions. The challenge is stored server-side with a short expiry.
+      responses:
+        "200":
+          description: WebAuthn creation options
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/Internal" }
+  /v1/auth/webauthn/register/finish:
+    post:
+      operationId: finishIdentityWebAuthnRegistration
+      tags: [MFA]
+      summary: Finish WebAuthn registration
+      description: Validates origin, RP ID, challenge, and attestation through the server-side WebAuthn library before persisting the credential.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "204": { description: WebAuthn credential registered }
+        "400": { $ref: "#/components/responses/Validation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/auth/webauthn/login/begin:
+    post:
+      operationId: beginIdentityWebAuthnLogin
+      tags: [MFA]
+      summary: Begin WebAuthn login
+      description: Returns PublicKeyCredentialRequestOptions for an active account with a registered authenticator.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 320 }
+      responses:
+        "200":
+          description: WebAuthn request options
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/auth/webauthn/login/finish:
+    post:
+      operationId: finishIdentityWebAuthnLogin
+      tags: [MFA]
+      summary: Finish WebAuthn login
+      description: Validates the assertion challenge and signature and creates a session.
+      security: []
+      parameters:
+        - name: X-WebAuthn-Email
+          in: header
+          required: true
+          description: Email identifying the WebAuthn account.
+          schema: { type: string, format: email }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "400": { $ref: "#/components/responses/Validation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/me:
+    get:
+      operationId: getIdentityMe
+      tags: [Identity]
+      summary: Get the caller identity
+      description: Returns the authenticated user or API-key principal, roles, permissions, and scopes.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: Caller identity
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /v1/auth/permissions:
+    get:
+      operationId: getIdentityPermissions
+      tags: [Identity]
+      summary: Get effective permissions
+      description: Returns the deny-by-default permissions derived from server-side roles and API-key scopes.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: Effective permissions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/api-keys:
+    get:
+      operationId: listIdentityAPIKeys
+      tags: [API Keys]
+      summary: List own API keys
+      description: Returns metadata only. Secret material is never retrievable.
+      responses:
+        "200":
+          description: Own API keys
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [keys]
+                properties:
+                  keys:
+                    type: array
+                    items: { $ref: "#/components/schemas/APIKeyView" }
+                  requestId: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createIdentityAPIKey
+      tags: [API Keys]
+      summary: Create an API key
+      description: Requires a step-up token for api_key:create. The HMAC secret is returned exactly once.
+      parameters:
+        - $ref: "#/components/parameters/StepUpToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAPIKeyRequest" }
+      responses:
+        "201":
+          description: API key created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreatedAPIKey" }
+        "400": { $ref: "#/components/responses/Validation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/api-keys/{keyId}:
+    delete:
+      operationId: revokeIdentityAPIKey
+      tags: [API Keys]
+      summary: Revoke an own API key
+      description: Requires a step-up token for api_key:revoke. Other users receive a uniform not-found response.
+      parameters:
+        - $ref: "#/components/parameters/StepUpToken"
+        - name: keyId
+          in: path
+          required: true
+          description: API key identifier.
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: API key revoked }
+        "400": { $ref: "#/components/responses/Validation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/kyc/cases:
+    get:
+      operationId: listIdentityKYCCases
+      tags: [KYC]
+      summary: List own KYC cases
+      description: Returns only KYC case references owned by the caller.
+      responses:
+        "200":
+          description: Own KYC cases
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: submitIdentityKYCCase
+      tags: [KYC]
+      summary: Submit a KYC provider reference
+      description: Records an opaque provider reference and requested verification level. No third-party credential is embedded.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [providerRef, level]
+              properties:
+                providerRef: { type: string, minLength: 1, maxLength: 256 }
+                level: { type: integer, minimum: 0, maximum: 5 }
+      responses:
+        "201":
+          description: KYC case submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": { $ref: "#/components/responses/Validation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/admin/users/{userId}:
+    get:
+      operationId: adminGetIdentityUser
+      tags: [Administration]
+      summary: Read a user
+      description: Requires admin:user:read. Returns a masked email and phone.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: Masked user view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUserView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/admin/users/{userId}/freeze:
+    post:
+      operationId: adminFreezeIdentityUser
+      tags: [Administration]
+      summary: Freeze a user
+      description: Requires admin:user:freeze plus an action-bound step-up token. Revokes all sessions and API keys.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/StepUpToken"
+      responses:
+        "204": { description: User frozen }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/admin/users/{userId}/unfreeze:
+    post:
+      operationId: adminUnfreezeIdentityUser
+      tags: [Administration]
+      summary: Unfreeze a user
+      description: Requires admin:user:freeze plus a distinct admin:user:unfreeze step-up token.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/StepUpToken"
+      responses:
+        "204": { description: User unfrozen }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/admin/users/{userId}/roles:
+    post:
+      operationId: adminSetIdentityRoles
+      tags: [Administration]
+      summary: Replace user roles
+      description: Requires admin:role:manage plus step-up. Admin and customer roles cannot be combined.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/StepUpToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [roles]
+              properties:
+                roles:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    enum: [customer, support, risk_operator, compliance, treasury, admin, auditor]
+      responses:
+        "204": { description: Roles replaced }
+        "400": { $ref: "#/components/responses/Validation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/admin/users/{userId}/revoke-sessions:
+    post:
+      operationId: adminRevokeIdentitySessions
+      tags: [Administration]
+      summary: Revoke all user sessions
+      description: Requires admin:session:revoke plus step-up.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/StepUpToken"
+      responses:
+        "200":
+          description: Sessions revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked: { type: integer, minimum: 0 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /v1/admin/users/{userId}/revoke-api-keys:
+    post:
+      operationId: adminRevokeIdentityAPIKeys
+      tags: [Administration]
+      summary: Revoke all user API keys
+      description: Requires admin:apikey:revoke plus step-up.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/StepUpToken"
+      responses:
+        "200":
+          description: API keys revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked: { type: integer, minimum: 0 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /v1/admin/audit-events:
+    get:
+      operationId: adminListIdentityAuditEvents
+      tags: [Administration]
+      summary: List audit events
+      description: Requires admin:audit:read. Returns append-only, hash-chained audit events.
+      parameters:
+        - name: actorId
+          in: query
+          description: Filter by actor identifier.
+          schema: { type: string, maxLength: 128 }
+        - name: action
+          in: query
+          description: Filter by stable action name.
+          schema: { type: string, maxLength: 128 }
+        - name: targetId
+          in: query
+          description: Filter by target identifier.
+          schema: { type: string, maxLength: 128 }
+        - name: limit
+          in: query
+          description: Maximum events to return.
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        "200":
+          description: Audit events
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/AuditEvent" }
+                  requestId: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /v1/admin/kyc/cases:
+    get:
+      operationId: adminListIdentityKYCCases
+      tags: [Administration]
+      summary: List KYC cases
+      description: Requires admin:kyc:read. Returns opaque provider references and decisions.
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum cases to return.
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+      responses:
+        "200":
+          description: KYC cases
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cases]
+                properties:
+                  cases:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /v1/admin/kyc/cases/{caseId}/decision:
+    post:
+      operationId: adminDecideIdentityKYCCase
+      tags: [Administration]
+      summary: Decide a KYC case
+      description: Requires admin:kyc:decide plus an action-bound step-up token.
+      parameters:
+        - name: caseId
+          in: path
+          required: true
+          description: KYC case identifier.
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/StepUpToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, level, reason]
+              properties:
+                status:
+                  type: string
+                  enum: [approved, rejected]
+                level: { type: integer, minimum: 0, maximum: 5 }
+                reason: { type: string, minLength: 1, maxLength: 512 }
+      responses:
+        "204": { description: KYC decision recorded }
+        "400": { $ref: "#/components/responses/Validation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: EdDSA access token. Sessions are checked against PostgreSQL on every request.
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Nexora-Key-Id
+      description: |
+        Signed-request authentication. The request must also include
+        X-Nexora-Timestamp, a unique X-Nexora-Nonce, and
+        X-Nexora-Signature over METHOD, path, timestamp, nonce, and body hash.
+  parameters:
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      description: Session identifier.
+      schema: { type: string, format: uuid }
+    UserId:
+      name: userId
+      in: path
+      required: true
+      description: User identifier.
+      schema: { type: string, format: uuid }
+    StepUpToken:
+      name: X-Step-Up-Token
+      in: header
+      required: true
+      description: Short-lived token bound to the required administrative action.
+      schema: { type: string }
+  headers:
+    RetryAfter:
+      description: Seconds to wait before retrying.
+      schema: { type: integer, minimum: 1 }
+  responses:
+    Validation:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Authentication failed, expired, or revoked
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Insufficient permission or step-up authentication required
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Resource not found or not owned by the caller
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Resource state conflict
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Rate limit, backoff, or account lockout
+      headers:
+        Retry-After: { $ref: "#/components/headers/RetryAfter" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Internal:
+      description: Safe internal error without sensitive details
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Health:
+      type: object
+      required: [status, service]
+      properties:
+        status: { type: string, enum: [ok, ready, not_ready] }
+        service: { type: string, const: identity-service }
+        version: { type: string }
+    Error:
+      type: object
+      required: [error, requestId]
+      properties:
+        error:
+          type: object
+          required: [code, message, retryAfterSeconds]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable error code.
+            message: { type: string }
+            retryAfterSeconds: { type: integer, minimum: 0 }
+        requestId: { type: string }
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 320 }
+        phone: { type: string, maxLength: 32 }
+        password: { type: string, minLength: 12, maxLength: 128 }
+        countryCode: { type: string, pattern: "^[A-Za-z]{2}$" }
+        deviceFingerprint: { type: string, maxLength: 128 }
+    RegisterResponse:
+      type: object
+      required: [verificationRequired, requestId]
+      properties:
+        verificationRequired: { type: boolean }
+        devVerificationToken:
+          type: string
+          description: Present only in explicit development/test mode.
+        devPhoneToken:
+          type: string
+          description: Present only in explicit development/test mode.
+        requestId: { type: string }
+    VerificationRequest:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string, minLength: 32, maxLength: 256 }
+    ResendVerificationRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email, maxLength: 320 }
+        kind: { type: string, enum: [email, phone], default: email }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 320 }
+        password: { type: string, minLength: 1, maxLength: 128 }
+        totpCode: { type: string, pattern: "^[0-9]{6}$" }
+        recoveryCode: { type: string, maxLength: 64 }
+        deviceFingerprint: { type: string, maxLength: 128 }
+    TokenPair:
+      type: object
+      required: [accessToken, refreshToken, tokenType, expiresIn, sessionId, mfa, requestId]
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        tokenType: { type: string, const: Bearer }
+        expiresIn: { type: integer, minimum: 0 }
+        accessExpiresAt: { type: string, format: date-time }
+        refreshExpiresAt: { type: string, format: date-time }
+        sessionId: { type: string, format: uuid }
+        mfa: { type: boolean }
+        requestId: { type: string }
+    MFAChallenge:
+      type: object
+      required: [mfaRequired, code, message, mfaToken, methods, requestId]
+      properties:
+        mfaRequired: { type: boolean, const: true }
+        code: { type: string, const: AUTH_MFA_REQUIRED }
+        message: { type: string }
+        mfaToken: { type: string }
+        methods:
+          type: array
+          items: { type: string, enum: [totp, webauthn, recovery_code] }
+        requestId: { type: string }
+    MFAVerifyRequest:
+      type: object
+      required: [mfaToken]
+      properties:
+        mfaToken: { type: string }
+        totpCode: { type: string, pattern: "^[0-9]{6}$" }
+        recoveryCode: { type: string, maxLength: 64 }
+    StepUpRequest:
+      type: object
+      required: [action]
+      properties:
+        action: { type: string, minLength: 1, maxLength: 128 }
+        totpCode: { type: string, pattern: "^[0-9]{6}$" }
+        recoveryCode: { type: string, maxLength: 64 }
+    StepUpResponse:
+      type: object
+      required: [stepUpToken, expiresAt, action]
+      properties:
+        stepUpToken: { type: string }
+        expiresAt: { type: string, format: date-time }
+        action: { type: string }
+    TOTPEnrollment:
+      type: object
+      required: [CredentialID, Secret, ProvisioningURI, ExpiresAt]
+      properties:
+        CredentialID: { type: string, format: uuid }
+        Secret: { type: string }
+        ProvisioningURI: { type: string }
+        ExpiresAt: { type: string, format: date-time }
+    SessionView:
+      type: object
+      required: [ID, CreatedAt, LastSeenAt, ExpiresAt, Current]
+      properties:
+        ID: { type: string, format: uuid }
+        CreatedAt: { type: string, format: date-time }
+        LastSeenAt: { type: string, format: date-time }
+        ExpiresAt: { type: string, format: date-time }
+        DeviceFingerprint: { type: string }
+        UserAgent: { type: string }
+        Current: { type: boolean }
+    CurrentSession:
+      type: object
+      required: [userId, sessionId, kind, roles, permissions, mfa, requestId]
+      properties:
+        userId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        kind: { type: string, enum: [session, api_key] }
+        roles:
+          type: array
+          items: { type: string }
+        permissions:
+          type: array
+          items: { type: string }
+        mfa: { type: boolean }
+        session: { $ref: "#/components/schemas/SessionView" }
+        requestId: { type: string }
+    Me:
+      type: object
+      required: [userId, kind, roles, permissions, scopes, requestId]
+      properties:
+        userId: { type: string, format: uuid }
+        kind: { type: string, enum: [session, api_key] }
+        roles:
+          type: array
+          items: { type: string }
+        permissions:
+          type: array
+          items: { type: string }
+        scopes:
+          type: array
+          items: { type: string, enum: [read, trade, transfer, withdraw] }
+        requestId: { type: string }
+    CreateAPIKeyRequest:
+      type: object
+      required: [label, scopes]
+      properties:
+        label: { type: string, minLength: 1, maxLength: 64 }
+        scopes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string, enum: [read, trade, transfer, withdraw] }
+        ipAllowlist:
+          type: array
+          items: { type: string }
+          description: CIDR prefixes or individual addresses; the entire address space is rejected.
+        algorithm: { type: string, enum: [hmac-sha256, ed25519], default: hmac-sha256 }
+        publicKey:
+          type: string
+          description: Base64 Ed25519 public key when algorithm is ed25519.
+        expiresInDays: { type: integer, minimum: 1, maximum: 365, default: 90 }
+    CreatedAPIKey:
+      allOf:
+        - $ref: "#/components/schemas/APIKeyView"
+        - type: object
+          properties:
+            secret:
+              type: string
+              description: One-time HMAC secret. Never retrievable after this response.
+    APIKeyView:
+      type: object
+      required: [ID, Label, KeyPrefix, Algorithm, Scopes, CreatedAt, Active]
+      properties:
+        ID: { type: string, format: uuid }
+        Label: { type: string }
+        KeyPrefix: { type: string }
+        Algorithm: { type: string, enum: [hmac-sha256, ed25519] }
+        Scopes:
+          type: array
+          items: { type: string }
+        IPAllowlist:
+          type: array
+          items: { type: string }
+        CreatedAt: { type: string, format: date-time }
+        LastUsedAt: { type: string, format: date-time }
+        ExpiresAt: { type: string, format: date-time }
+        RevokedAt: { type: string, format: date-time }
+        Active: { type: boolean }
+    AdminUserView:
+      type: object
+      required: [ID, Email, Status, KYCLevel, Roles, CreatedAt, UpdatedAt]
+      properties:
+        ID: { type: string, format: uuid }
+        Email: { type: string, description: Masked email address. }
+        Phone: { type: string, description: Masked phone number. }
+        Status: { type: string, enum: [pending, active, frozen, closed] }
+        KYCLevel: { type: integer, minimum: 0, maximum: 5 }
+        Roles:
+          type: array
+          items: { type: string }
+        EmailVerified: { type: boolean }
+        PhoneVerified: { type: boolean }
+        MFAEnrolled: { type: boolean }
+        CreatedAt: { type: string, format: date-time }
+        UpdatedAt: { type: string, format: date-time }
+    AuditEvent:
+      type: object
+      required: [ID, OccurredAt, ActorType, Action, Outcome, EventHash]
+      properties:
+        ID: { type: string, format: uuid }
+        OccurredAt: { type: string, format: date-time }
+        ActorType: { type: string }
+        ActorID: { type: string }
+        Action: { type: string }
+        TargetType: { type: string }
+        TargetID: { type: string }
+        Outcome: { type: string, enum: [success, denied, failure] }
+        UserAgent: { type: string }
+        RequestID: { type: string }
+        Metadata:
+          type: object
+          additionalProperties: { type: string }
+        PrevHash: { type: string, contentEncoding: base64 }
+        EventHash: { type: string, contentEncoding: base64 }
+    JWKS:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [kty, crv, use, alg, kid, x]
+            properties:
+              kty: { type: string, const: OKP }
+              crv: { type: string, const: Ed25519 }
+              use: { type: string, const: sig }
+              alg: { type: string, const: EdDSA }
+              kid: { type: string }
+              x: { type: string }

@@ -3,7 +3,11 @@
 target/
 bin/
 dist/
-gen/
+gen/*
+!gen/go/
+gen/go/*
+!gen/go/go.mod
+!gen/go/go.sum
 node_modules/
 
 # Environment and secrets

@@ -157,6 +157,31 @@ services:
         condition: service_started
     networks: [nexora]
 
+  identity-service:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: services/identity-service/Dockerfile
+    environment:
+      <<: *service-env
+      NEXORA_HTTP_ADDR: "0.0.0.0:8080"
+      NEXORA_IDENTITY_GRPC_ADDR: "0.0.0.0:9090"
+      NEXORA_IDENTITY_DATABASE_URL: "postgres://${POSTGRES_USER:-nexora}:${POSTGRES_PASSWORD:-nexora_dev_only}@postgres:5432/${POSTGRES_DB:-nexora}?sslmode=disable"
+      NEXORA_IDENTITY_AUTO_MIGRATE: "true"
+      NEXORA_IDENTITY_ALLOW_EPHEMERAL_KEYS: "true"
+      NEXORA_IDENTITY_EXPOSE_DEV_TOKENS: "true"
+      NEXORA_IDENTITY_WEBAUTHN_RP_ID: "localhost"
+      NEXORA_IDENTITY_WEBAUTHN_RP_ORIGINS: "http://localhost:8082"
+    ports:
+      - "8082:8080"
+      - "9090:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks: [nexora]
+
 volumes:
   postgres-data:
   redpanda-data:
