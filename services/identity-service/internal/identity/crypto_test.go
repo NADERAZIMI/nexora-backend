@@ -85,7 +85,8 @@ func TestPasswordPolicy(t *testing.T) {
 }
 
 func TestTOTPRFC6238Vector(t *testing.T) {
-	// RFC 6238 SHA-1 test secret, represented as base32.
+	// RFC 6238 SHA-1 public test secret, represented as base32.
+	// nosemgrep: generic.secrets.security.detected-generic-secret.detected-generic-secret
 	secret := "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 	code, err := TOTPCode(secret, 59, 8, 30*time.Second)
 	if err != nil {
@@ -181,7 +182,10 @@ func TestJWTValidationRejectsConfusionAndWrongAudience(t *testing.T) {
 		},
 		SessionID: sessionID.String(), Roles: []string{"customer"}, Type: "access",
 	}
+	// This is a deliberate negative test that must be rejected by ParseAccess.
+	// nosemgrep: go.jwt-go.security.jwt-none-alg.jwt-go-none-algorithm
 	unsigned := jwt.NewWithClaims(jwt.SigningMethodNone, unsignedClaims)
+	// nosemgrep: go.jwt-go.security.jwt-none-alg.jwt-go-none-algorithm
 	noneToken, err := unsigned.SignedString(jwt.UnsafeAllowNoneSignatureType)
 	if err != nil {
 		t.Fatalf("sign none: %v", err)
@@ -190,6 +194,8 @@ func TestJWTValidationRejectsConfusionAndWrongAudience(t *testing.T) {
 		t.Fatalf("algorithm none accepted: %v", err)
 	}
 
+	// Deliberate algorithm-confusion negative test; this key is not a credential.
+	// nosemgrep: go.jwt-go.security.jwt.hardcoded-jwt-key
 	hmacToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, unsignedClaims).SignedString([]byte("attacker-secret"))
 	if err != nil {
 		t.Fatalf("sign hmac: %v", err)

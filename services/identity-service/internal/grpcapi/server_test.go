@@ -53,6 +53,8 @@ func TestGRPCIdentityLifecycle(t *testing.T) {
 	}
 
 	listener := bufconn.Listen(1024 * 1024)
+	// In-memory bufconn test transport only; production gRPC requires TLS/mTLS.
+	// nosemgrep: go.grpc.security.grpc-server-insecure-connection.grpc-server-insecure-connection
 	server := grpc.NewServer()
 	Register(server, New(service, slog.New(slog.NewTextHandler(io.Discard, nil))))
 	go func() {

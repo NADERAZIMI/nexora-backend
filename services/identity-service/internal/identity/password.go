@@ -150,15 +150,16 @@ func parsePHC(encoded string) (Argon2Params, []byte, []byte, error) {
 		if len(keyValue) != 2 {
 			return Argon2Params{}, nil, nil, errors.New("invalid argon2 parameters")
 		}
-		value, err := strconv.ParseUint(keyValue[1], 10, 32)
+		// nosemgrep: trailofbits.go.string-to-int-signedness-cast.string-to-int-signedness-cast
+		value, err := strconv.ParseUint(keyValue[1], 10, 32) // bitSize 32 bounds all later assignments
 		if err != nil {
 			return Argon2Params{}, nil, nil, errors.New("invalid argon2 parameter value")
 		}
 		switch keyValue[0] {
 		case "m":
-			params.MemoryKiB = uint32(value)
+			params.MemoryKiB = uint32(value) // bounded by ParseUint bitSize 32
 		case "t":
-			params.Iterations = uint32(value)
+			params.Iterations = uint32(value) // bounded by ParseUint bitSize 32
 		case "p":
 			if value < 1 || value > 16 {
 				return Argon2Params{}, nil, nil, errors.New("invalid argon2 parallelism")
