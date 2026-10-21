@@ -82,7 +82,7 @@ test: domain-gate
 test-identity-db:
 	@test -n "$$NEXORA_TEST_DATABASE_URL" || \
 		(echo "NEXORA_TEST_DATABASE_URL must point to a disposable PostgreSQL 17 test database"; exit 1)
-	cd services/identity-service && $(GO) test -race -count=1 -run 'Test(PostgresIdentityStoreIntegration|IdentityServicePostgresEndToEnd)$$' -v ./internal/postgres
+	cd services/identity-service && $(GO) test -race -count=1 -run 'Test(PostgresIdentityStoreIntegration|IdentityServicePostgresEndToEnd|IdentityServicePostgresWebAuthn)$$' -v ./internal/postgres
 
 domain-gate:
 	$(CARGO) test -p nexora-types --all-features

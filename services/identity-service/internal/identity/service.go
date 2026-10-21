@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/http"
 	"net/mail"
 	"net/netip"
 	"sort"
@@ -1061,6 +1062,14 @@ func (s *Service) FinishWebAuthnLogin(ctx context.Context, email string, body []
 	if err != nil {
 		_ = s.store.AppendAudit(ctx, NewAuditEvent("user", user.ID.String(), "auth.webauthn.login", "user", user.ID.String(), "denied", nil, s.ipHash(meta), meta.UserAgent, meta.RequestID, now))
 		return nil, invalidCredentialsError()
+	}
+	// A non-increasing signature counter is the WebAuthn signal that the
+	// credential private key may exist on a cloned authenticator. Fail closed
+	// and leave the stored counter untouched instead of accepting either
+	// copy.
+	if credential.Authenticator.CloneWarning {
+		_ = s.store.AppendAudit(ctx, NewAuditEvent("user", user.ID.String(), "auth.webauthn.clone_warning", "user", user.ID.String(), "denied", nil, s.ipHash(meta), meta.UserAgent, meta.RequestID, now))
+		return nil, NewAppError(http.StatusUnauthorized, CodeAuthWebAuthn, "WebAuthn authenticator counter regression detected")
 	}
 	// Persist the updated signature counter and consume the challenge atomically
 	// so a cloned authenticator cannot replay an assertion.

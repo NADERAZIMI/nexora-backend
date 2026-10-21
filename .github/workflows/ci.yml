@@ -168,7 +168,7 @@ jobs:
           (cd services/identity-service && go test -race ./...)
       - name: PostgreSQL 17 integration and concurrency tests
         run: |
-          (cd services/identity-service && go test -race -count=1 -run 'Test(PostgresIdentityStoreIntegration|IdentityServicePostgresEndToEnd)$' -v ./internal/postgres)
+          (cd services/identity-service && go test -race -count=1 -run 'Test(PostgresIdentityStoreIntegration|IdentityServicePostgresEndToEnd|IdentityServicePostgresWebAuthn)$' -v ./internal/postgres)
       - name: Build
         run: |
           (cd services/identity-service && go build ./...)

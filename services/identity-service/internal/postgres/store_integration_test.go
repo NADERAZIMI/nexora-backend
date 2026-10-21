@@ -18,7 +18,7 @@ import (
 	"github.com/nexora-exchange/nexora/services/identity-service/internal/identity"
 )
 
-func integrationDatabase(t *testing.T) (*Store, fs.FS) {
+func integrationDatabase(t testing.TB) (*Store, fs.FS) {
 	t.Helper()
 	url := os.Getenv("NEXORA_TEST_DATABASE_URL")
 	if url == "" {
@@ -46,7 +46,7 @@ func integrationDatabase(t *testing.T) (*Store, fs.FS) {
 	return store, migrations
 }
 
-func randomHash(t *testing.T) []byte {
+func randomHash(t testing.TB) []byte {
 	t.Helper()
 	value := make([]byte, 32)
 	if _, err := rand.Read(value); err != nil {

@@ -78,6 +78,31 @@ ledgers.
 - JWTs are validated locally by the edge with a cached JWKS; revocation is
   enforced by a short TTL plus a revocation list for high-risk events.
 
+### 3.1 Current B03 implementation and cross-service contract
+
+B03 implements the identity service as the authority for sessions, roles, API
+keys, and permissions. The edge-cache design above remains a future target and
+is not deployed.
+
+- Every authenticated identity-service request validates the Ed25519 JWT
+  (`alg=EdDSA`, trusted `kid`, issuer, audience, expiry, and token type) and
+  then resolves the session, user status, and roles from PostgreSQL. Revocation
+  and role changes therefore take effect on the next request.
+- Authorization is deny-by-default and uses the authoritative role set, never
+  role claims from the token. A JWT that claims `admin` for a customer session
+  grants no administrative permission.
+- Future Go and Rust services may cache the JWKS for signature verification
+  only. They must not treat JWT role or scope claims as authoritative for
+  sensitive operations. They must call the identity service's authoritative
+  permission, session, or API-key check, or rely on a decision produced by it.
+- Session, role, API-key, and permission revocation must fail closed when
+  authoritative state is unavailable. Caching an authorization decision for up
+  to 60 seconds is permitted only where the endpoint's risk analysis allows it;
+  the B03 identity service itself performs no authorization caching.
+- Services must reject unsigned, symmetrically signed, malformed, expired,
+  not-yet-valid, wrong-issuer, wrong-audience, wrong-type, tampered, and
+  untrusted-`kid` tokens. EdDSA is the only accepted access-token algorithm.
+
 ---
 
 ## 4. Multi-factor authentication
@@ -239,6 +264,12 @@ Additional abuse cases:
 - TLS 1.3 only, HSTS, modern cipher suites, OCSP stapling.
 - Bot management and device fingerprinting for login and registration.
 - Per-IP, per-account, and per-key rate limits with adaptive thresholds.
+- Distributed rate limiting is required before horizontal scaling of the
+  identity service: limits must be enforced consistently at the API gateway
+  (or a shared Redis-backed limiter), not per process. B03 implements only the
+  PostgreSQL-backed lockout and per-instance request handling; a gateway-level
+  distributed limiter is a future-phase requirement and must not be inferred
+  from the current lockout tests.
 - Geo/IP restrictions for sanctioned or restricted jurisdictions.
 - WebSocket connection caps and message rate limits.
 - No direct access to core services from the internet.
