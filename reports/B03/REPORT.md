@@ -4,10 +4,12 @@
 **Status:** Implementation complete. Local build, race, integration, contract,
 lint, secret-scan, and targeted SAST checks executed successfully. The first
 GitHub Actions run failed on a public RFC test-vector secret and intentional
-negative-test SAST findings; false-positive annotations were added and the CI
-rerun is pending. WebAuthn positive ceremony, live notification delivery,
-production KMS, Docker/Compose runtime, and the final dependency scan remain
-explicitly gated below.
+negative-test SAST findings; those false positives were annotated. The second run
+passed secret/SAST but exposed `RUSTSEC-2026-0382` in `rustls-webpki 0.103.15`;
+the lockfile was bumped to `0.103.16` and the third CI run is pending. WebAuthn
+positive ceremony, live notification delivery, production KMS,
+Docker/Compose runtime, and the final Go vulnerability scan remain explicitly
+gated below.
 **Date:** 2026-10-21
 **Accepted baseline:** `29b786b7f27644ee4c099666af2e9b0daeb535da`
 **Code commit:** `22b3ad22397a10c96aa44c91fc187e2d1045639d`
@@ -67,7 +69,9 @@ The service is a Go module at
 `github.com/nexora-exchange/nexora/services/identity-service`. PostgreSQL 17 is
 the authoritative identity store. Redis is not used for identity state; no
 bounded ephemeral identity state was moved into Redis. Financial cores remain
-Rust; B03 adds no Rust service logic.
+Rust; B03 adds no Rust service logic. The only Rust dependency change is a
+patch-level `Cargo.lock` bump from `rustls-webpki 0.103.15` to `0.103.16` for
+`RUSTSEC-2026-0382`.
 
 ### 2.1 Runtime endpoints
 
@@ -422,7 +426,7 @@ Generated `.pb.go` files are intentionally not committed. `gen/go/go.mod` and
 `gen/go/go.sum` are tracked so the module is reproducible. `buf.gen.yaml` uses
 `clean: false` to preserve those two files during regeneration.
 
-The follow-up report/CI-remediation commit changes:
+The follow-up report/CI-remediation commits change:
 
 - `.gitleaks.toml` (allowlist the public RFC 6238 test vector)
 - `services/identity-service/internal/identity/password.go` (precise SAST
@@ -431,7 +435,12 @@ The follow-up report/CI-remediation commit changes:
   deliberate JWT negative tests)
 - `services/identity-service/internal/grpcapi/server_test.go` (annotate the
   in-memory bufconn test server as non-production)
+- `Cargo.lock` (`rustls-webpki 0.103.16` for `RUSTSEC-2026-0382`)
 - `reports/B03/REPORT.md`
+
+The first four items and the initial report were commit
+`4741a4427ab8a470c8c18121d040e5a94957856d`. The dependency bump and this report
+update are the subsequent commit recorded in the completion message.
 
 ---
 
@@ -449,7 +458,9 @@ The follow-up report/CI-remediation commit changes:
 - Semgrep: `1.182.0` (targeted identity-service scan).
 - govulncheck: `v1.9.0`.
 - git: `2.56.0.windows.2`.
-- Rust/cargo: not installed in this environment; no Rust source was changed.
+- Rust/cargo: not installed in this environment. No Rust source was changed; only
+  `Cargo.lock` was patched. Local `cargo check`/`cargo deny` could not be run;
+  the CI Rust and financial-verification jobs validate the bump.
 
 ### 7.2 Identity service
 
@@ -548,6 +559,9 @@ Executed in unchanged Go modules affected by `go.work`:
 | govulncheck, final retry | BLOCKED — `vuln.go.dev` returned HTTP 403 |
 | CI Security job, first run | FAIL — gitleaks flagged public RFC 6238 test vector |
 | CI SAST job, first run | FAIL — intentional JWT negative tests and a bounds-checked cast |
+| CI Security job, second run | Secret scan PASS; cargo-deny FAIL on `RUSTSEC-2026-0382` |
+| CI SAST job, second run | PASS |
+| Rust dependency audit (OSV) | PASS after bump — 276 packages, 0 findings |
 
 The CI findings were false positives, not leaked credentials:
 
@@ -560,10 +574,21 @@ The CI findings were false positives, not leaked credentials:
 - The bufconn gRPC server is test-only; production gRPC requires TLS/mTLS.
 
 The local full-history gitleaks scan and the targeted Semgrep scan pass after
-those fixes. The first govulncheck run completed against an earlier revision and
-reported no symbol-level vulnerabilities. The final retry could not fetch the
-external vulnerability database. It is recorded as BLOCKED, not PASS, for the
-final revision. CI is configured to rerun it.
+those fixes. The second CI run confirmed both remediations.
+
+An OSV batch query over all 276 crates in `Cargo.lock` found one advisory:
+`RUSTSEC-2026-0382` against `rustls-webpki 0.103.15` (certificate verification
+may accept distrusted intermediates). The fixed release is `0.103.16`. The
+lockfile was updated with the registry checksum; a repeat OSV query reports zero
+findings. Cargo-deny logs are not publicly readable without authentication, so
+the CI step is correlated with the only advisory present in the lockfile rather
+than a captured log. The CI Rust and financial-verification jobs are the
+authoritative compilation check for the bump.
+
+The first govulncheck run completed against an earlier revision and reported no
+symbol-level vulnerabilities. The final retry could not fetch the external
+vulnerability database. It is recorded as BLOCKED, not PASS, for the final
+revision. CI is configured to rerun it.
 
 ### 7.7 Docker and Compose
 
@@ -645,13 +670,14 @@ for the phase.
 | G16 REST/OpenAPI and Protobuf compatibility | PASS | Spectral, buf, route parity |
 | G17 Go format/vet/lint/build | PASS | Recorded commands |
 | G18 Unit/race/integration tests | PASS | Recorded logs |
-| G19 Secret scan | PASS | Local full-history gitleaks exit 0 after allowlist |
-| G20 Dependency vulnerability scan | BLOCKED | Final retry HTTP 403 |
+| G19 Secret scan | PASS | Local full-history gitleaks exit 0; CI second-run secret scan PASS |
+| G20 Go dependency vulnerability scan | BLOCKED | Final retry HTTP 403; CI rerun required |
 | G21 Docker/Compose runtime | BLOCKED | Docker unavailable |
 | G22 Live email/SMS delivery and KMS | BLOCKED | Outbox only; no provider/KMS |
 | G23 WebAuthn successful ceremony | BLOCKED | Software authenticator not available |
-| G24 GitHub Actions | FAIL then rerun pending | Run `39532156477` failed Security+SAST; remediation pushed in report commit |
+| G24 GitHub Actions | FAIL then third rerun pending | Run 1 failed secret/SAST; run 2 passed those but failed cargo-deny |
 | G25 Zero frontend changes | PASS | No frontend directory; backend diff only |
+| G26 Rust dependency policy | PENDING CI | `rustls-webpki 0.103.16` lockfile bump; OSV reports 0 findings |
 
 Any gate not observed as passing is not presented as PASS.
 
@@ -673,8 +699,12 @@ Any gate not observed as passing is not presented as PASS.
    `docker compose config` were not executed locally.
 5. **Final govulncheck:** external database access returned HTTP 403. The earlier
    successful run covered an earlier revision; the final revision requires CI.
-6. **GitHub Actions:** CI is triggered on push. Its result is recorded in the
-   section below only when observed.
+6. **GitHub Actions:** two runs are red. The first failed on false-positive
+   secret/SAST findings; the second passed those and failed cargo-deny on
+   `RUSTSEC-2026-0382`. The lockfile bump and report update trigger a third run.
+7. **Local Rust verification:** cargo/rustc are absent. The patch-level lockfile
+   bump is checksum-verified and OSV-clean locally, but compilation and
+   cargo-deny are validated only in CI.
 
 ### 10.2 Design risks
 
@@ -705,9 +735,9 @@ These remain from the accepted B02 baseline and were not expanded in B03:
 
 - No frontend file was modified or added.
 - The repository contains no frontend directory.
-- All 54 code-commit paths plus the report-remediation paths are backend
-  services, contracts, generated-module metadata, root tooling, CI, Compose, or
-  documentation.
+- All 54 code-commit paths plus the report, scan-annotation, and dependency
+  metadata paths are backend services, contracts, generated-module metadata,
+  root tooling, CI, Compose, or documentation.
 - No B04 file, reference-data service, ledger, matching, wallet, futures,
   custody, or withdrawal implementation was added.
 
@@ -717,13 +747,17 @@ These remain from the accepted B02 baseline and were not expanded in B03:
 
 - Accepted parent: `29b786b7f27644ee4c099666af2e9b0daeb535da`
 - B03 code commit: `22b3ad22397a10c96aa44c91fc187e2d1045639d`
-- Remote `origin/main` after code push:
-  `22b3ad22397a10c96aa44c91fc187e2d1045639d`
-- Push was a fast-forward; no force-push and no history rewrite.
-- The report commit is the commit that adds this file after the code commit.
+- Scan-annotation/report commit:
+  `4741a4427ab8a470c8c18121d040e5a94957856d`
+- Remote `origin/main` after that push:
+  `4741a4427ab8a470c8c18121d040e5a94957856d`
+- Pushes were fast-forwards; no force-push and no history rewrite.
+- This report update and the `Cargo.lock` advisory bump are the next commit;
+  its hash and the final remote equality check are recorded in the completion
+  message.
 
-Local `HEAD` and remote `main` must be rechecked after the report commit. The
-final verified hashes are reported in the completion message.
+Local `HEAD` and remote `main` were equal after every push. The final verified
+hashes are reported in the completion message.
 
 ---
 
@@ -758,10 +792,35 @@ carry rule-specific suppressions with justification. A targeted Semgrep scan of
 the identity service reports zero blocking findings after remediation.
 
 Because the first run is red, the B03 code commit must not be called CI-green.
-The remediation and this report are in a follow-up commit; its CI rerun is the
-authoritative check. The final observed rerun result is reported in the
-completion message and must be rechecked with the GitHub Actions API before any
-release claim.
 
-If the rerun fails, B03 must not be described as CI-green even though local
-checks passed.
+Second run ID: `39534080411`
+Run URL: <https://github.com/NADERAZIMI/nexora-backend/actions/runs/39534080411>
+Code SHA: `4741a4427ab8a470c8c18121d040e5a94957856d`
+
+The second run also completed with conclusion `failure`, but with different
+results:
+
+| Job | Result |
+|-----|--------|
+| Financial verification | PASS |
+| Rust | PASS |
+| Go | PASS |
+| Contracts | PASS |
+| Documentation | PASS |
+| Compose | PASS |
+| Identity (Go, PostgreSQL 17) | PASS |
+| Security | FAIL — secret scan PASS; dependency/license policy FAIL |
+| SAST | PASS |
+
+The secret-scan and SAST remediations therefore worked. The remaining failure was
+the cargo-deny step. The only advisory found by an OSV query across all 276
+locked crates was `RUSTSEC-2026-0382` against `rustls-webpki 0.103.15`; the
+fixed version is `0.103.16`. The lockfile was updated with the published
+registry checksum, and a repeat OSV query reports zero findings. The
+cargo-deny log itself is not publicly readable without GitHub authentication, so
+this correlation is the available evidence rather than a captured log.
+
+The dependency bump and this report update trigger a third run. The final
+observed result is reported in the completion message and must be rechecked with
+the GitHub Actions API before any release claim. If the third run fails, B03 must
+not be described as CI-green even though local checks passed.
