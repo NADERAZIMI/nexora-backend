@@ -6,10 +6,12 @@ lint, secret-scan, and targeted SAST checks executed successfully. The first
 GitHub Actions run failed on a public RFC test-vector secret and intentional
 negative-test SAST findings; those false positives were annotated. The second run
 passed secret/SAST but exposed `RUSTSEC-2026-0382` in `rustls-webpki 0.103.15`;
-the lockfile was bumped to `0.103.16` and the third CI run is pending. WebAuthn
-positive ceremony, live notification delivery, production KMS,
-Docker/Compose runtime, and the final Go vulnerability scan remain explicitly
-gated below.
+the lockfile was bumped to `0.103.16`. The third run passed secret/SAST and
+cargo-deny, then the Go vulnerability step failed because `gen/go` stubs were not
+generated in the Security job. That workflow gap was fixed and the fourth CI run
+is pending. WebAuthn positive ceremony, live notification delivery, production
+KMS, Docker/Compose runtime, and the local Go vulnerability scan remain
+explicitly gated below.
 **Date:** 2026-10-21
 **Accepted baseline:** `29b786b7f27644ee4c099666af2e9b0daeb535da`
 **Code commit:** `22b3ad22397a10c96aa44c91fc187e2d1045639d`
@@ -562,6 +564,8 @@ Executed in unchanged Go modules affected by `go.work`:
 | CI Security job, second run | Secret scan PASS; cargo-deny FAIL on `RUSTSEC-2026-0382` |
 | CI SAST job, second run | PASS |
 | Rust dependency audit (OSV) | PASS after bump — 276 packages, 0 findings |
+| CI Security job, third run | Secret scan PASS; cargo-deny PASS; govulncheck FAIL on missing `gen/go` |
+| CI SAST job, third run | PASS |
 
 The CI findings were false positives, not leaked credentials:
 
@@ -583,7 +587,14 @@ lockfile was updated with the registry checksum; a repeat OSV query reports zero
 findings. Cargo-deny logs are not publicly readable without authentication, so
 the CI step is correlated with the only advisory present in the lockfile rather
 than a captured log. The CI Rust and financial-verification jobs are the
-authoritative compilation check for the bump.
+authoritative compilation check for the bump. The third CI run confirmed that
+cargo-deny passes with `0.103.16`.
+
+The third run then failed at govulncheck because the Security job checked out a
+tree without the git-ignored `gen/go` protobuf stubs. The Go and Identity jobs
+already generated those stubs; the Security job did not. The workflow now
+installs buf and the protoc plugins, runs `buf generate`, and only then runs
+govulncheck. The fourth run is the authoritative check for that fix.
 
 The first govulncheck run completed against an earlier revision and reported no
 symbol-level vulnerabilities. The final retry could not fetch the external
@@ -675,9 +686,9 @@ for the phase.
 | G21 Docker/Compose runtime | BLOCKED | Docker unavailable |
 | G22 Live email/SMS delivery and KMS | BLOCKED | Outbox only; no provider/KMS |
 | G23 WebAuthn successful ceremony | BLOCKED | Software authenticator not available |
-| G24 GitHub Actions | FAIL then third rerun pending | Run 1 failed secret/SAST; run 2 passed those but failed cargo-deny |
+| G24 GitHub Actions | FAIL then fourth rerun pending | Runs 1–2 failed on remediated scan issues; run 3 passed them but lacked `gen/go` before govulncheck |
 | G25 Zero frontend changes | PASS | No frontend directory; backend diff only |
-| G26 Rust dependency policy | PENDING CI | `rustls-webpki 0.103.16` lockfile bump; OSV reports 0 findings |
+| G26 Rust dependency policy | PASS | Third CI run cargo-deny PASS; `rustls-webpki 0.103.16`; OSV 0 findings |
 
 Any gate not observed as passing is not presented as PASS.
 
@@ -699,12 +710,14 @@ Any gate not observed as passing is not presented as PASS.
    `docker compose config` were not executed locally.
 5. **Final govulncheck:** external database access returned HTTP 403. The earlier
    successful run covered an earlier revision; the final revision requires CI.
-6. **GitHub Actions:** two runs are red. The first failed on false-positive
+6. **GitHub Actions:** three runs are red. The first failed on false-positive
    secret/SAST findings; the second passed those and failed cargo-deny on
-   `RUSTSEC-2026-0382`. The lockfile bump and report update trigger a third run.
+   `RUSTSEC-2026-0382`; the third passed both, then govulncheck lacked generated
+   protobuf stubs. The workflow generation step and this report trigger a fourth
+   run.
 7. **Local Rust verification:** cargo/rustc are absent. The patch-level lockfile
-   bump is checksum-verified and OSV-clean locally, but compilation and
-   cargo-deny are validated only in CI.
+   bump is registry-checksum-verified and OSV-clean locally; compilation and
+   cargo-deny were validated in the third CI run.
 
 ### 10.2 Design risks
 
@@ -749,12 +762,13 @@ These remain from the accepted B02 baseline and were not expanded in B03:
 - B03 code commit: `22b3ad22397a10c96aa44c91fc187e2d1045639d`
 - Scan-annotation/report commit:
   `4741a4427ab8a470c8c18121d040e5a94957856d`
+- Rust advisory/report commit:
+  `e847683dc574d0659626b23e5e35e9b9c4987c2f`
 - Remote `origin/main` after that push:
-  `4741a4427ab8a470c8c18121d040e5a94957856d`
+  `e847683dc574d0659626b23e5e35e9b9c4987c2f`
 - Pushes were fast-forwards; no force-push and no history rewrite.
-- This report update and the `Cargo.lock` advisory bump are the next commit;
-  its hash and the final remote equality check are recorded in the completion
-  message.
+- This Security-workflow/report update is the next commit; its hash and the
+  final remote equality check are recorded in the completion message.
 
 Local `HEAD` and remote `main` were equal after every push. The final verified
 hashes are reported in the completion message.
@@ -820,7 +834,33 @@ registry checksum, and a repeat OSV query reports zero findings. The
 cargo-deny log itself is not publicly readable without GitHub authentication, so
 this correlation is the available evidence rather than a captured log.
 
-The dependency bump and this report update trigger a third run. The final
-observed result is reported in the completion message and must be rechecked with
-the GitHub Actions API before any release claim. If the third run fails, B03 must
+Third run ID: `39535304822`
+Run URL: <https://github.com/NADERAZIMI/nexora-backend/actions/runs/39535304822>
+Code SHA: `e847683dc574d0659626b23e5e35e9b9c4987c2f`
+
+The third run completed with conclusion `failure`:
+
+| Job | Result |
+|-----|--------|
+| Financial verification | PASS |
+| Rust | PASS |
+| Go | PASS |
+| Contracts | PASS |
+| Documentation | PASS |
+| Compose | PASS |
+| Identity (Go, PostgreSQL 17) | PASS |
+| Security | FAIL — secret scan PASS; cargo-deny PASS; Go vulnerability scan FAIL |
+| SAST | PASS |
+
+The remaining failure was not a vulnerability finding. The Security job's
+govulncheck step ran in a fresh checkout where the git-ignored `gen/go` protobuf
+stubs did not exist, so it could not load
+`github.com/nexora-exchange/nexora/gen/go/nexora/identity/v1`. The Go and
+Identity jobs already generated those stubs; the Security job did not. The
+workflow now installs buf and the protoc plugins and runs `buf generate` before
+govulncheck.
+
+The workflow fix and this report update trigger a fourth run. The final observed
+result is reported in the completion message and must be rechecked with the
+GitHub Actions API before any release claim. If the fourth run fails, B03 must
 not be described as CI-green even though local checks passed.
