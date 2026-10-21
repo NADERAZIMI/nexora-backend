@@ -29,8 +29,10 @@ func BenchmarkIdentityServiceResolveSessionPostgres(b *testing.B) {
 }
 
 // BenchmarkIdentityServiceResolveSessionPostgresParallel measures the same path
-// under concurrent load, exercising the pgx pool (default maximum 12
-// connections) rather than a single serialized caller.
+// under concurrent load, exercising the pgx pool rather than a single
+// serialized caller. The identity configuration keeps the pgx default (greater
+// of 4 or NumCPU) when it falls in 4-32 connections and otherwise clamps it to
+// 12.
 func BenchmarkIdentityServiceResolveSessionPostgresParallel(b *testing.B) {
 	service, accessToken := benchmarkResolveSession(b)
 	ctx := context.Background()
