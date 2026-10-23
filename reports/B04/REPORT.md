@@ -585,9 +585,27 @@ bounded label cardinality.
 
 ## 14. CI and commit evidence
 
-Filled after the normal fast-forward push. No force-push is used. The final local
-HEAD and `origin/main` are verified equal, and the actual GitHub Actions URL and
-job results are recorded here.
+- B04 implementation commit: `ff00b04` (`feat(reference): add versioned
+  reference data and atomic activation`).
+- CI correction commit: `aa9777d` (`fix(reference): resolve CI lint and exact
+  Rust snapshot decoding`).
+- B04 code HEAD: `aa9777dc89a7d2702da10a3de959a5117bbe48e7`.
+- Push: `ff00b04..aa9777d  main -> main`, a normal fast-forward push. No
+  force-push was used.
+- This report is committed as a report-only follow-up. It changes no code; after
+  that commit is pushed, local HEAD and `origin/main` are verified equal and the
+  follow-up CI run is recorded in the final handoff.
+- Final GitHub Actions run:
+  [39903997122](https://github.com/NADERAZIMI/nexora-backend/actions/runs/39903997122)
+  — **success**, 10/10 jobs passed: Go, Identity (Go, PostgreSQL 17), Reference
+  data (Go, PostgreSQL 17), Rust, Contracts, Security, SAST, Financial
+  verification, Documentation, and Compose.
+- The first run on `ff00b04`,
+  [39902353456](https://github.com/NADERAZIMI/nexora-backend/actions/runs/39902353456),
+  failed in five jobs: Go and Reference-data `golangci-lint`, Rust compilation,
+  `cargo-deny` wildcard policy, and a Semgrep direct-write false positive.
+  `aa9777d` fixed those findings; the final run above is the evidence used for
+  B04. The failed run is retained in history and is not claimed as passing.
 
 ---
 
