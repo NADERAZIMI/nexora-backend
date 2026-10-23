@@ -13,8 +13,6 @@ import (
 	"github.com/nexora-exchange/nexora/services/reference-data-service/internal/reference"
 )
 
-const auditActionRole = "actor_role"
-
 // appendAuditTx appends one event to the hash chain inside the caller's
 // transaction. The head row is locked so concurrent writers cannot fork it.
 func appendAuditTx(ctx context.Context, tx pgx.Tx, event *reference.AuditEvent, actorRole string) error {

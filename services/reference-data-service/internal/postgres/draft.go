@@ -85,7 +85,7 @@ func (s *Store) SaveDraft(ctx context.Context, request reference.SaveDraftReques
 		return nil
 	})
 	if err != nil {
-		return reference.Draft{}, mapPgError(err, reference.CodeConflict, "draft could not be saved")
+		return reference.Draft{}, mapPgError(err, "draft could not be saved")
 	}
 	return saved, nil
 }

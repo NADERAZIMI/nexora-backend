@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -70,7 +71,7 @@ func (s *Store) CreateProposal(ctx context.Context, request reference.CreateProp
 		return appendAuditTx(ctx, tx, event, primaryRole(request.Actor))
 	})
 	if err != nil {
-		return reference.Proposal{}, mapPgError(err, reference.CodeConflict, "proposal could not be created")
+		return reference.Proposal{}, mapPgError(err, "proposal could not be created")
 	}
 	return proposal, nil
 }
@@ -175,7 +176,7 @@ func (s *Store) ApproveProposal(ctx context.Context, proposalID uuid.UUID, appro
 		return nil
 	})
 	if err != nil {
-		return reference.Proposal{}, mapPgError(err, reference.CodeConflict, "proposal approval failed")
+		return reference.Proposal{}, mapPgError(err, "proposal approval failed")
 	}
 	return proposal, nil
 }
@@ -219,7 +220,7 @@ func (s *Store) RejectProposal(ctx context.Context, proposalID uuid.UUID, actor 
 		return nil
 	})
 	if err != nil {
-		return reference.Proposal{}, mapPgError(err, reference.CodeConflict, "proposal rejection failed")
+		return reference.Proposal{}, mapPgError(err, "proposal rejection failed")
 	}
 	return proposal, nil
 }
@@ -304,7 +305,7 @@ func (s *Store) PublishProposal(ctx context.Context, request reference.PublishRe
 		return appendAuditTx(ctx, tx, event, primaryRole(request.Actor))
 	})
 	if err != nil {
-		return reference.Version{}, mapPgError(err, reference.CodeConflict, "publication failed")
+		return reference.Version{}, mapPgError(err, "publication failed")
 	}
 	return published, nil
 }
@@ -327,7 +328,7 @@ func getProposalRow(ctx context.Context, source interface {
 		&proposal.ProposalID, &baseVersion, &proposal.SchemaVersion, &proposal.ContentHash, &proposal.Document,
 		&proposal.Status, &proposal.CreatedBy, &proposal.CreatedAt, &proposal.SubmittedAt, &decidedAt,
 		&rejection, &publishedVersion); err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return reference.Proposal{}, reference.NotFound("proposal", proposalID.String())
 		}
 		return reference.Proposal{}, err

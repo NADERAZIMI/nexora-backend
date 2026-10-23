@@ -74,7 +74,7 @@ func (s *stubSource) ActiveShards(context.Context) ([]string, error) {
 	return []string{s.active.ShardID}, nil
 }
 
-func newTestServer(t *testing.T, authorizer auth.Authorizer, store *stubStore) (http.Handler, *snapshot.Cache) {
+func newTestServer(t *testing.T, authorizer auth.Authorizer, store *stubStore) http.Handler {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := reference.New(store, nil, nil, logger)
@@ -93,13 +93,13 @@ func newTestServer(t *testing.T, authorizer auth.Authorizer, store *stubStore) (
 	}
 	cache := snapshot.New(source, logger, nil, time.Hour, nil)
 	providers := &observability.Providers{Registry: prometheus.NewRegistry()}
-	return New(service, authorizer, cache, store, logger, "test", "internal-test-token", nil, providers), cache
+	return New(service, authorizer, cache, store, logger, "test", "internal-test-token", nil, providers)
 }
 
 func TestProtectedRoutesRequireLiveIdentityDecision(t *testing.T) {
 	store := &stubStore{}
 	authorizer := &fakeAuthorizer{principal: reference.Principal{UserID: uuid.New(), RequestID: "req"}}
-	handler, _ := newTestServer(t, authorizer, store)
+	handler := newTestServer(t, authorizer, store)
 
 	request := httptest.NewRequest(http.MethodGet, "/v1/admin/reference-data/draft", nil)
 	recorder := httptest.NewRecorder()
@@ -140,7 +140,7 @@ func TestAdminDraftRoundTrip(t *testing.T) {
 	authorizer := &fakeAuthorizer{principal: reference.Principal{
 		UserID: uuid.New(), Roles: []string{"admin"}, Permissions: []string{reference.PermWrite}, RequestID: "req-1",
 	}}
-	handler, _ := newTestServer(t, authorizer, store)
+	handler := newTestServer(t, authorizer, store)
 	document, err := seed.Document().CanonicalBytes()
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +188,7 @@ func TestAdminRegistryListsAssetsAndNetworks(t *testing.T) {
 	authorizer := &fakeAuthorizer{principal: reference.Principal{
 		UserID: uuid.New(), Permissions: []string{reference.PermRead}, RequestID: "req-list",
 	}}
-	handler, _ := newTestServer(t, authorizer, store)
+	handler := newTestServer(t, authorizer, store)
 	for _, path := range []string{
 		"/v1/admin/reference-data/assets",
 		"/v1/admin/reference-data/networks",
@@ -216,7 +216,7 @@ func TestAdminRegistryListsAssetsAndNetworks(t *testing.T) {
 func TestInternalSnapshotRequiresServiceTokenAndServesVerifiedBody(t *testing.T) {
 	store := &stubStore{}
 	authorizer := &fakeAuthorizer{principal: reference.Principal{UserID: uuid.New()}}
-	handler, _ := newTestServer(t, authorizer, store)
+	handler := newTestServer(t, authorizer, store)
 
 	request := httptest.NewRequest(http.MethodGet, "/v1/reference-data/active?shard_id=default", nil)
 	recorder := httptest.NewRecorder()

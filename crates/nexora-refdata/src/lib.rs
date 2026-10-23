@@ -19,7 +19,10 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use nexora_types::{FeeSchedule as FeeSchedulePrimitive, Instrument, MarginTier};
+use nexora_types::{
+    Amount, AssetId, Bps, ContractSpec, FeeSchedule as FeeSchedulePrimitive, Instrument,
+    InstrumentKind, InstrumentStatus, MarginTier, Qty, SymbolId,
+};
 
 /// The only snapshot schema version accepted by this crate.
 pub const SCHEMA_VERSION: &str = "nexora.reference-data.v1";
@@ -121,9 +124,8 @@ pub struct AssetNetwork {
 
 /// One instrument plus B04-only references. The core fields are flattened so
 /// the B02 [`Instrument`] validator sees exactly the frozen trading contract.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct InstrumentRecord {
-    #[serde(flatten)]
     pub core: Instrument,
     pub price_decimals: i16,
     pub qty_decimals: i16,
@@ -137,6 +139,82 @@ pub struct InstrumentRecord {
     pub price_source_policy_ref: Option<String>,
     pub margin_mode_capabilities: Vec<String>,
     pub position_mode_capabilities: Vec<String>,
+}
+
+// Deserialize the flattened instrument without serde's buffered flatten
+// representation, which cannot carry i128 amounts exactly.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InstrumentWire {
+    symbol_id: SymbolId,
+    symbol: String,
+    kind: InstrumentKind,
+    base: AssetId,
+    quote: AssetId,
+    tick_size: i64,
+    lot_size: i64,
+    min_qty: Qty,
+    max_qty: Qty,
+    min_notional: Amount,
+    max_notional: Amount,
+    price_band_bps: i32,
+    maker_fee_bps: Bps,
+    taker_fee_bps: Bps,
+    contract: Option<ContractSpec>,
+    status: InstrumentStatus,
+    price_decimals: i16,
+    qty_decimals: i16,
+    fee_schedule_id: String,
+    margin_tier_set_id: Option<String>,
+    allowed_order_types: Vec<String>,
+    allowed_time_in_force: Vec<String>,
+    listed_at: String,
+    delisted_at: Option<String>,
+    risk_limit_ref: Option<String>,
+    price_source_policy_ref: Option<String>,
+    margin_mode_capabilities: Vec<String>,
+    position_mode_capabilities: Vec<String>,
+}
+
+impl<'de> Deserialize<'de> for InstrumentRecord {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = InstrumentWire::deserialize(deserializer)?;
+        Ok(Self {
+            core: Instrument {
+                symbol_id: wire.symbol_id,
+                symbol: wire.symbol,
+                kind: wire.kind,
+                base: wire.base,
+                quote: wire.quote,
+                tick_size: wire.tick_size,
+                lot_size: wire.lot_size,
+                min_qty: wire.min_qty,
+                max_qty: wire.max_qty,
+                min_notional: wire.min_notional,
+                max_notional: wire.max_notional,
+                price_band_bps: wire.price_band_bps,
+                maker_fee_bps: wire.maker_fee_bps,
+                taker_fee_bps: wire.taker_fee_bps,
+                contract: wire.contract,
+                status: wire.status,
+            },
+            price_decimals: wire.price_decimals,
+            qty_decimals: wire.qty_decimals,
+            fee_schedule_id: wire.fee_schedule_id,
+            margin_tier_set_id: wire.margin_tier_set_id,
+            allowed_order_types: wire.allowed_order_types,
+            allowed_time_in_force: wire.allowed_time_in_force,
+            listed_at: wire.listed_at,
+            delisted_at: wire.delisted_at,
+            risk_limit_ref: wire.risk_limit_ref,
+            price_source_policy_ref: wire.price_source_policy_ref,
+            margin_mode_capabilities: wire.margin_mode_capabilities,
+            position_mode_capabilities: wire.position_mode_capabilities,
+        })
+    }
 }
 
 /// One volume-based fee tier.
@@ -333,13 +411,13 @@ pub fn validate_document(document: &SnapshotDocument) -> Result<(), RefDataError
         if !networks.insert(network.network_id.clone()) {
             return invalid(format!("duplicate network {}", network.network_id));
         }
-        if let Some(native) = network.native_asset_id {
-            if !assets.contains_key(&native) {
-                return invalid(format!(
-                    "network {} references unknown native asset {}",
-                    network.network_id, native
-                ));
-            }
+        if let Some(native) = network.native_asset_id
+            && !assets.contains_key(&native)
+        {
+            return invalid(format!(
+                "network {} references unknown native asset {}",
+                network.network_id, native
+            ));
         }
         if network.address_format == "evm_hex" && network.chain_id.is_none() {
             return invalid(format!(
@@ -423,10 +501,10 @@ pub fn validate_document(document: &SnapshotDocument) -> Result<(), RefDataError
             if !(0..=10_000).contains(&tier.taker_bps) {
                 return invalid("taker_bps is out of range".to_string());
             }
-            if let Some(prior) = previous {
-                if tier.taker_bps > prior.taker_bps || tier.maker_bps > prior.maker_bps {
-                    return invalid("fee rates must not increase with volume".to_string());
-                }
+            if let Some(prior) = previous
+                && (tier.taker_bps > prior.taker_bps || tier.maker_bps > prior.maker_bps)
+            {
+                return invalid("fee rates must not increase with volume".to_string());
             }
             previous = Some(tier);
         }
@@ -502,13 +580,17 @@ pub fn validate_document(document: &SnapshotDocument) -> Result<(), RefDataError
         if !instrument_symbols.insert(instrument.symbol.clone()) {
             return invalid(format!("duplicate instrument symbol {}", instrument.symbol));
         }
-        if !assets.contains_key(&instrument.base.get()) {
+        if !i32::try_from(instrument.base.get())
+            .is_ok_and(|asset_id| assets.contains_key(&asset_id))
+        {
             return invalid(format!(
                 "instrument {} has an unknown base asset",
                 instrument.symbol
             ));
         }
-        if !assets.contains_key(&instrument.quote.get()) {
+        if !i32::try_from(instrument.quote.get())
+            .is_ok_and(|asset_id| assets.contains_key(&asset_id))
+        {
             return invalid(format!(
                 "instrument {} has an unknown quote asset",
                 instrument.symbol
@@ -570,13 +652,13 @@ pub fn validate_document(document: &SnapshotDocument) -> Result<(), RefDataError
                     instrument.symbol, set_id
                 ));
             }
-            if let Some(last) = set.tiers.last() {
-                if instrument.max_notional > last.notional_cap {
-                    return invalid(format!(
-                        "instrument {} max notional exceeds the last margin tier",
-                        instrument.symbol
-                    ));
-                }
+            if let Some(last) = set.tiers.last()
+                && instrument.max_notional > last.notional_cap
+            {
+                return invalid(format!(
+                    "instrument {} max notional exceeds the last margin tier",
+                    instrument.symbol
+                ));
             }
         }
     }
@@ -710,8 +792,8 @@ fn invalid(message: String) -> Result<(), RefDataError> {
     Err(validation_error(message))
 }
 
-fn validation_error(message: String) -> RefDataError {
-    RefDataError::Validation(message)
+fn validation_error(message: impl Into<String>) -> RefDataError {
+    RefDataError::Validation(message.into())
 }
 
 fn ensure_non_negative(value: i128, field: &str) -> Result<(), RefDataError> {

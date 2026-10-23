@@ -382,7 +382,8 @@ func (d Document) Validate() []Issue {
 			}
 		}
 
-		if instrument.Kind == "SPOT" {
+		switch instrument.Kind {
+		case "SPOT":
 			if instrument.Contract != nil {
 				add(path+".contract", "REF_RELATION", "spot instruments must not define a contract")
 			}
@@ -392,7 +393,7 @@ func (d Document) Validate() []Issue {
 			if len(instrument.MarginModeCapabilities) > 0 || len(instrument.PositionModeCapabilities) > 0 {
 				add(path, "REF_RELATION", "spot instruments must not define futures margin capabilities")
 			}
-		} else if instrument.Kind == "PERPETUAL" {
+		case "PERPETUAL":
 			if instrument.Contract == nil {
 				add(path+".contract", "REF_REQUIRED", "perpetual instruments require a contract specification")
 			}
@@ -671,11 +672,11 @@ func validateOptionalAmount(add func(string, string, string, ...any), path strin
 	validateAmount(add, path, *value)
 }
 
-func validateMinMax(add func(string, string, string, ...any), minPath string, min *Amount, maxPath string, max *Amount) {
-	if min == nil || max == nil {
+func validateMinMax(add func(string, string, string, ...any), _ string, minimum *Amount, maxPath string, maximum *Amount) {
+	if minimum == nil || maximum == nil {
 		return
 	}
-	if max.Cmp(*min) < 0 {
+	if maximum.Cmp(*minimum) < 0 {
 		add(maxPath, "REF_RANGE", "maximum must not be below minimum")
 	}
 }
@@ -723,7 +724,7 @@ func validateContractAddress(format, address string) error {
 		}
 	case "solana_base58":
 		if !solanaAddressPattern.MatchString(address) {
-			return fmt.Errorf("Solana contract address has an invalid base58 format")
+			return fmt.Errorf("solana contract address has an invalid base58 format")
 		}
 	case "bitcoin":
 		return fmt.Errorf("the Bitcoin network does not support token contract addresses")

@@ -536,11 +536,11 @@ func diffJSON(before, after refdata.Document, limit int) []Change {
 		leftSlice, leftIsSlice := left.([]any)
 		rightSlice, rightIsSlice := right.([]any)
 		if leftIsSlice && rightIsSlice {
-			max := len(leftSlice)
-			if len(rightSlice) > max {
-				max = len(rightSlice)
+			maxLen := len(leftSlice)
+			if len(rightSlice) > maxLen {
+				maxLen = len(rightSlice)
 			}
-			for index := 0; index < max; index++ {
+			for index := 0; index < maxLen; index++ {
 				var leftItem, rightItem any
 				if index < len(leftSlice) {
 					leftItem = leftSlice[index]

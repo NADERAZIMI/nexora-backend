@@ -2,10 +2,9 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/nexora-exchange/nexora/libs/go/refdata"
 	"github.com/nexora-exchange/nexora/services/reference-data-service/internal/reference"
@@ -59,7 +58,7 @@ func getVersionRow(ctx context.Context, source interface {
 		&published.Version, &published.SchemaVersion, &published.ContentHash, &document,
 		&published.EffectiveAt, &published.CreatedBy, &published.CreatedAt, &published.ProposalID,
 		&rollbackOf, &published.ApprovalCount, &published.Canonicalization); err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return reference.Version{}, reference.NotFound("version", itoa64(version))
 		}
 		return reference.Version{}, err
@@ -91,20 +90,4 @@ func scanVersion(rows pgx.Rows) (reference.Version, error) {
 	published.Parsed = parsed
 	published.RollbackOf = rollbackOf
 	return published, nil
-}
-
-// nullUUIDValue converts an optional UUID.
-func nullUUIDValue(id uuid.UUID) any {
-	if id == uuid.Nil {
-		return nil
-	}
-	return id
-}
-
-// uuidFromPg converts a nullable UUID column.
-func uuidFromPg(value pgtype.UUID) uuid.UUID {
-	if !value.Valid {
-		return uuid.Nil
-	}
-	return uuid.UUID(value.Bytes)
 }

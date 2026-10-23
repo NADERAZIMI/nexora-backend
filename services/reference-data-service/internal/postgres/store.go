@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -174,7 +173,7 @@ func migrationFiles(fsys fs.FS, direction string) ([]migrationFile, error) {
 	return out, nil
 }
 
-func mapPgError(err error, fallbackCode, fallbackMessage string) error {
+func mapPgError(err error, fallbackMessage string) error {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
 		return err
@@ -189,15 +188,8 @@ func mapPgError(err error, fallbackCode, fallbackMessage string) error {
 	case pgErr.Code == "23505":
 		return reference.Conflict(reference.CodeConflict, fallbackMessage, nil)
 	default:
-		return reference.Conflict(fallbackCode, fallbackMessage, nil)
+		return reference.Conflict(reference.CodeConflict, fallbackMessage, nil)
 	}
-}
-
-func nullUUID(value *uuid.UUID) any {
-	if value == nil {
-		return nil
-	}
-	return *value
 }
 
 func nullInt64(value *int64) any {
@@ -205,11 +197,4 @@ func nullInt64(value *int64) any {
 		return nil
 	}
 	return *value
-}
-
-func uuidString(value uuid.UUID) string {
-	if value == uuid.Nil {
-		return ""
-	}
-	return value.String()
 }

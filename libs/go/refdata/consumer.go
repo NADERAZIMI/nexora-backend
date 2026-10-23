@@ -87,10 +87,8 @@ func (c *Consumer) Apply(snapshot Snapshot, options ApplyOptions) error {
 			}
 			return nil
 		}
-		if next.Version > current.Version && options.AllowRollback {
-			// A normal forward update is always allowed; the flag only grants
-			// permission for a regression.
-		}
+		// A normal forward update is always allowed; AllowRollback only grants
+		// permission for a regression.
 	}
 	c.current.Store(&next)
 	c.applied.Add(1)

@@ -270,7 +270,7 @@ func (s *Server) submitProposal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listProposals(w http.ResponseWriter, r *http.Request) {
-	proposals, err := s.service.ListProposals(r.Context(), queryInt(r, "limit", 50))
+	proposals, err := s.service.ListProposals(r.Context(), queryInt(r))
 	if err != nil {
 		writeError(w, err)
 		return
@@ -283,7 +283,7 @@ func (s *Server) listProposals(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getProposal(w http.ResponseWriter, r *http.Request) {
-	proposalID, err := pathUUID(r, "proposalId")
+	proposalID, err := pathUUID(r)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -297,7 +297,7 @@ func (s *Server) getProposal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) approveProposal(w http.ResponseWriter, r *http.Request) {
-	proposalID, err := pathUUID(r, "proposalId")
+	proposalID, err := pathUUID(r)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -319,7 +319,7 @@ func (s *Server) approveProposal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) rejectProposal(w http.ResponseWriter, r *http.Request) {
-	proposalID, err := pathUUID(r, "proposalId")
+	proposalID, err := pathUUID(r)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -340,7 +340,7 @@ func (s *Server) rejectProposal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) publishProposal(w http.ResponseWriter, r *http.Request) {
-	proposalID, err := pathUUID(r, "proposalId")
+	proposalID, err := pathUUID(r)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -369,7 +369,7 @@ func (s *Server) publishProposal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listVersions(w http.ResponseWriter, r *http.Request) {
-	versions, err := s.service.ListVersions(r.Context(), queryInt(r, "limit", 50))
+	versions, err := s.service.ListVersions(r.Context(), queryInt(r))
 	if err != nil {
 		writeError(w, err)
 		return
@@ -492,7 +492,7 @@ func (s *Server) changeActivation(w http.ResponseWriter, r *http.Request, rollba
 }
 
 func (s *Server) listActivations(w http.ResponseWriter, r *http.Request) {
-	activations, err := s.service.ListActivations(r.Context(), r.URL.Query().Get("shard_id"), queryInt(r, "limit", 50))
+	activations, err := s.service.ListActivations(r.Context(), r.URL.Query().Get("shard_id"), queryInt(r))
 	if err != nil {
 		writeError(w, err)
 		return
@@ -510,7 +510,7 @@ func (s *Server) audit(w http.ResponseWriter, r *http.Request) {
 		}
 		before = parsed
 	}
-	events, err := s.service.ListAudit(r.Context(), queryInt(r, "limit", 50), before)
+	events, err := s.service.ListAudit(r.Context(), queryInt(r), before)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -565,6 +565,8 @@ func writeSnapshot(w http.ResponseWriter, value refdata.Snapshot) {
 	w.Header().Set("X-Nexora-Config-Shard", value.ShardID)
 	w.Header().Set("X-Nexora-Config-Rollback", strconv.FormatBool(value.Rollback))
 	w.WriteHeader(http.StatusOK)
+	// The payload is verified JSON served with a JSON content type, not HTML.
+	// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter
 	_, _ = w.Write(value.Canonical)
 }
 
@@ -613,18 +615,18 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
 	return nil
 }
 
-func pathUUID(r *http.Request, name string) (uuid.UUID, error) {
-	id, err := uuid.Parse(r.PathValue(name))
+func pathUUID(r *http.Request) (uuid.UUID, error) {
+	id, err := uuid.Parse(r.PathValue("proposalId"))
 	if err != nil || id == uuid.Nil {
-		return uuid.Nil, reference.InvalidInput(name + " must be a UUID")
+		return uuid.Nil, reference.InvalidInput("proposalId must be a UUID")
 	}
 	return id, nil
 }
 
-func queryInt(r *http.Request, name string, fallback int) int {
-	parsed, err := strconv.Atoi(r.URL.Query().Get(name))
+func queryInt(r *http.Request) int {
+	parsed, err := strconv.Atoi(r.URL.Query().Get("limit"))
 	if err != nil || parsed <= 0 {
-		return fallback
+		return 50
 	}
 	return parsed
 }

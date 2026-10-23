@@ -66,15 +66,23 @@ fn rejects_tampered_bytes_and_bad_hashes() {
     ));
 }
 
+fn mutate(bytes: &[u8], from: &str, to: &str) -> Vec<u8> {
+    let text = std::str::from_utf8(bytes).expect("fixture is UTF-8");
+    assert!(text.contains(from), "fixture does not contain {from}");
+    text.replacen(from, to, 1).into_bytes()
+}
+
 #[test]
 fn rejects_unknown_schema_and_unknown_top_level_fields() {
     let (bytes, hash) = fixture();
     let document: SnapshotDocument = serde_json::from_slice(&bytes).expect("parse fixture");
     assert_eq!(document.schema_version, SCHEMA_VERSION);
 
-    let mut value: serde_json::Value = serde_json::from_slice(&bytes).expect("parse value");
-    value["schema_version"] = serde_json::Value::String("nexora.reference-data.v999".to_string());
-    let changed = serde_json::to_vec(&value).expect("encode changed");
+    let changed = mutate(
+        &bytes,
+        "\"schema_version\":\"nexora.reference-data.v1\"",
+        "\"schema_version\":\"nexora.reference-data.v999\"",
+    );
     let changed_hash = {
         use sha2::{Digest, Sha256};
         let digest = Sha256::digest(&changed);
@@ -88,9 +96,7 @@ fn rejects_unknown_schema_and_unknown_top_level_fields() {
         Err(RefDataError::Schema(_))
     ));
 
-    value["schema_version"] = serde_json::Value::String(SCHEMA_VERSION.to_string());
-    value["unexpected"] = serde_json::Value::Bool(true);
-    let changed = serde_json::to_vec(&value).expect("encode changed");
+    let changed = mutate(&bytes, "{", "{\"unexpected\":true,");
     let changed_hash = {
         use sha2::{Digest, Sha256};
         let digest = Sha256::digest(&changed);
@@ -140,9 +146,11 @@ fn consumer_rejects_version_hash_conflict() {
     let consumer = Consumer::new();
     consumer.apply(v1, false).expect("apply v1");
 
-    let mut value: serde_json::Value = serde_json::from_slice(&bytes).expect("parse value");
-    value["assets"][0]["display_name"] = serde_json::Value::String("Conflicting".to_string());
-    let changed = serde_json::to_vec(&value).expect("encode changed");
+    let changed = mutate(
+        &bytes,
+        "\"display_name\":\"Bitcoin\"",
+        "\"display_name\":\"Conflicting\"",
+    );
     let changed_hash = {
         use sha2::{Digest, Sha256};
         let digest = Sha256::digest(&changed);

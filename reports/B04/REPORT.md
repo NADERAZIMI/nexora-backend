@@ -227,9 +227,10 @@ units.
 - Supports explicit rollback authorization and rejects stale versions otherwise.
 - Consumes the same golden fixture as Go; the fixture hash is the cross-language
   compatibility anchor.
-- Local compilation could not run because this Windows host lacks the MSVC
-  linker. `cargo fmt --all -- --check` passes; GitHub Actions runs `cargo test`
-  and `clippy` for the workspace.
+- The native MSVC target cannot link on this Windows host, so local checks used
+  a GNU Rust host toolchain. `cargo fmt --all -- --check`, `cargo clippy` with
+  `-D warnings`, and the 7 crate tests pass locally; GitHub Actions also runs
+  the workspace tests and clippy.
 
 ---
 
@@ -483,10 +484,17 @@ carry-forward risk; it does not affect reference-data correctness.
 | Check | Reason | Compensating evidence |
 |-------|--------|-----------------------|
 | `go test -race` | Windows host has no C compiler/cgo; Go reports `-race requires cgo` | CI reference job runs all suites with `-race` |
-| Rust `cargo test` / `clippy` | MSVC `link.exe` and Windows SDK libraries are absent | `cargo fmt` passes; CI Rust job builds and tests the workspace |
+| Native MSVC Rust target | MSVC `link.exe` and Windows SDK libraries are absent | The crate was checked locally with a GNU host toolchain; CI uses the normal MSVC workspace job |
 | Docker image build / full Compose runtime | Docker is not installed on this host | Compose model and Dockerfile lint are in CI; runtime remains a carry-forward risk |
 | `govulncheck` online scan | `vuln.go.dev` returned HTTP 403 during the final local run | An earlier local run on Go 1.27.2 found only standard-library `GO-2026-6809`, fixed in Go 1.27.3; CI uses Go 1.27.x and runs `govulncheck` |
 | Live Email/SMS, production KMS/HSM, end-to-end OTLP | No production credentials or collector | Explicitly retained as blocked risks |
+
+The GNU Rust host toolchain was used to execute the checks that the native MSVC
+host could not link. `cargo fmt --all -- --check`,
+`cargo clippy -p nexora-refdata --all-targets --all-features -- -D warnings`, and
+`cargo test -p nexora-refdata --all-features` passed locally with 7 tests.
+`cargo-deny check` reported advisories, bans, licenses and sources all clean, and
+`semgrep scan --config auto --error` reported 0 findings.
 
 ---
 
@@ -507,7 +515,7 @@ gate is marked PASS only for behavior observed locally or in CI.
 | G07 Draft/version workflow with immutable published content | PASS | PostgreSQL workflow, trigger immutability, concurrent publish |
 | G08 Maker/checker with no self-approval | PASS | Service and trigger rejection; two-approver publication |
 | G09 Atomic activation, idempotency, scheduling and rollback | PASS | Advisory lock, transaction tests, 2.6659 ms rollback, stale-version tests |
-| G10 Go/Rust hot-reload and rollback SDKs | PASS (Go local; Rust CI) | Go consumer tests; Rust crate and fixture tests run in CI |
+| G10 Go/Rust hot-reload and rollback SDKs | PASS | Go consumer tests; Rust crate and 7 fixture/consumer tests pass locally and in CI |
 | G11 Super Admin APIs with live identity and step-up | PASS | Identity `Authorize` tests; HTTP authorization/step-up/token tests |
 | G12 Market presentation contract without synthetic liquidity | PASS | Schema validation, `authoritative_for_risk` and synthetic-volume rejection |
 | G13 Idempotent non-production seed fixtures | PASS | Seed idempotency test; boot log; fixture provenance comments |

@@ -19,7 +19,7 @@ const (
 	headerConfigEffectiveAt = "X-Nexora-Config-Effective-At"
 	headerConfigShard       = "X-Nexora-Config-Shard"
 	headerConfigRollback    = "X-Nexora-Config-Rollback"
-	headerServiceToken      = "X-Nexora-Service-Token"
+	headerServiceToken      = "X-Nexora-Service-Token" //nolint:gosec // header name, not a credential
 	defaultMaxSnapshotBytes = 16 << 20
 )
 
@@ -78,7 +78,7 @@ func (c *HTTPClient) fetch(ctx context.Context, path string) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("fetch reference-data snapshot: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	limit := c.MaxBodyBytes
 	if limit <= 0 {
 		limit = defaultMaxSnapshotBytes

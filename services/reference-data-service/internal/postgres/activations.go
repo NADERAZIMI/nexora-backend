@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"time"
@@ -63,7 +64,7 @@ func (s *Store) Activate(ctx context.Context, request reference.StoreActivation)
 		hasActive := true
 		if err := tx.QueryRow(ctx, `SELECT version, activation_id FROM reference.active WHERE shard_id=$1 FOR UPDATE`, shardID).
 			Scan(&activeVersion, &activeActivation); err != nil {
-			if err != pgx.ErrNoRows {
+			if !errors.Is(err, pgx.ErrNoRows) {
 				return err
 			}
 			hasActive = false
@@ -71,7 +72,7 @@ func (s *Store) Activate(ctx context.Context, request reference.StoreActivation)
 
 		var publishedHash string
 		if err := tx.QueryRow(ctx, `SELECT content_hash FROM reference.versions WHERE version=$1`, request.Version).Scan(&publishedHash); err != nil {
-			if err == pgx.ErrNoRows {
+			if errors.Is(err, pgx.ErrNoRows) {
 				return reference.NotFound("version", itoa64(request.Version))
 			}
 			return err
@@ -193,7 +194,7 @@ func (s *Store) Activate(ctx context.Context, request reference.StoreActivation)
 		return appendAuditTx(ctx, tx, event, primaryRole(request.Actor))
 	})
 	if err != nil {
-		return reference.Activation{}, mapPgError(err, reference.CodeConflict, "activation failed")
+		return reference.Activation{}, mapPgError(err, "activation failed")
 	}
 	return activation, nil
 }
@@ -251,7 +252,7 @@ func (s *Store) promoteOne(ctx context.Context, activationID uuid.UUID, now time
 		hasActive := true
 		if err := tx.QueryRow(ctx, `SELECT version, activation_id FROM reference.active WHERE shard_id=$1 FOR UPDATE`, current.ShardID).
 			Scan(&activeVersion, &activeActivation); err != nil {
-			if err != pgx.ErrNoRows {
+			if !errors.Is(err, pgx.ErrNoRows) {
 				return err
 			}
 			hasActive = false
@@ -304,7 +305,7 @@ func (s *Store) promoteOne(ctx context.Context, activationID uuid.UUID, now time
 		return nil
 	})
 	if err != nil {
-		return reference.Activation{}, false, mapPgError(err, reference.CodeConflict, "scheduled activation failed")
+		return reference.Activation{}, false, mapPgError(err, "scheduled activation failed")
 	}
 	return activation, promoted, nil
 }
@@ -320,7 +321,7 @@ func (s *Store) Active(ctx context.Context, shardID string) (reference.Active, e
 		(x.rollback_of IS NOT NULL) FROM reference.active a
 		JOIN reference.activations x ON x.activation_id=a.activation_id WHERE a.shard_id=$1`, shardID).
 		Scan(&active.ShardID, &active.Version, &active.ActivationID, &active.ActivatedAt, &rollback); err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return reference.Active{}, reference.NotFound("active configuration", shardID)
 		}
 		return reference.Active{}, err
@@ -377,7 +378,7 @@ func loadActivationByKey(ctx context.Context, tx pgx.Tx, shardID, key string) (r
 	var id uuid.UUID
 	if err := tx.QueryRow(ctx, `SELECT activation_id FROM reference.activations WHERE shard_id=$1 AND idempotency_key=$2`,
 		shardID, key).Scan(&id); err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return reference.Activation{}, false, nil
 		}
 		return reference.Activation{}, false, err
@@ -408,7 +409,7 @@ func loadActivationRow(ctx context.Context, source interface {
 		&activation.ActivationID, &activation.ShardID, &activation.Version, &activation.Status,
 		&expectedVersion, &rollbackOf, &activation.RequestedBy, &activation.RequestedAt,
 		&activation.EffectiveAt, &activatedAt, &failure, &activation.IdempotencyKey); err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return reference.Activation{}, reference.NotFound("activation", activationID.String())
 		}
 		return reference.Activation{}, err
