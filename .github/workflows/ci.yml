@@ -103,12 +103,12 @@ jobs:
           (cd libs/go && go build ./...)
           (cd services/hello-service && go build ./...)
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: latest
           working-directory: libs/go
       - name: golangci-lint hello-service
-        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: latest
           working-directory: services/hello-service
@@ -173,7 +173,7 @@ jobs:
         run: |
           (cd services/identity-service && go build ./...)
       - name: golangci-lint identity-service
-        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: latest
           working-directory: services/identity-service
@@ -247,7 +247,7 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           (cd services/reference-data-service && govulncheck ./...)
       - name: golangci-lint reference-data-service
-        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: latest
           working-directory: services/reference-data-service
