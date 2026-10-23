@@ -178,6 +178,80 @@ jobs:
           version: latest
           working-directory: services/identity-service
 
+  reference-data:
+    name: Reference data (Go, PostgreSQL 17)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: reference_test
+          POSTGRES_USER: identity
+          POSTGRES_PASSWORD: identity_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U identity -d reference_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      NEXORA_TEST_DATABASE_URL: postgres://identity:identity_test_only@localhost:5432/reference_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1
+        with:
+          version: "1.74.0"
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.27.x"
+          cache-dependency-path: |
+            gen/go/go.sum
+            libs/go/go.sum
+            services/reference-data-service/go.sum
+      - name: Generate Go contracts
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          (cd contracts && buf generate)
+      - name: Format
+        run: |
+          unformatted="$(gofmt -l gen/go libs/go services/reference-data-service)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt required for:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: Vet
+        run: |
+          (cd libs/go && go vet ./...)
+          (cd services/reference-data-service && go vet ./...)
+      - name: Unit, concurrency, and integration tests (race)
+        run: |
+          (cd libs/go && go test -race ./...)
+          (cd services/reference-data-service && go test -race -count=1 ./...)
+      - name: PostgreSQL 17 integration evidence
+        run: |
+          (cd services/reference-data-service && go test -race -count=1 -run 'Test(MigrationsUpDown|ReferenceDataWorkflowPostgres)$' -v ./internal/postgres)
+      - name: Golden fixture and deterministic hash
+        run: |
+          (cd services/reference-data-service && go test -count=1 -run 'TestGoldenFixture|TestFixtureIsValidAndDeterministic$' -v ./internal/seed)
+      - name: Build
+        run: |
+          (cd services/reference-data-service && go build ./...)
+      - name: Go vulnerability scan
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          (cd services/reference-data-service && govulncheck ./...)
+      - name: golangci-lint reference-data-service
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
+        with:
+          version: latest
+          working-directory: services/reference-data-service
+
   contracts:
     name: Contracts
     runs-on: ubuntu-24.04
@@ -248,6 +322,7 @@ jobs:
           (cd libs/go && govulncheck ./...)
           (cd services/hello-service && govulncheck ./...)
           (cd services/identity-service && govulncheck ./...)
+          (cd services/reference-data-service && govulncheck ./...)
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "24.21.0"
@@ -305,6 +380,10 @@ jobs:
         uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
         with:
           dockerfile: services/identity-service/Dockerfile
+      - name: Lint reference-data Dockerfile
+        uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
+        with:
+          dockerfile: services/reference-data-service/Dockerfile
       - name: Lint Rust Dockerfile
         uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
         with:

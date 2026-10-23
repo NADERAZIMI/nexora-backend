@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/nexora-config",
+    "crates/nexora-refdata",
     "crates/nexora-telemetry",
     "crates/nexora-types",
     "services/core-template",

@@ -182,6 +182,32 @@ services:
         condition: service_started
     networks: [nexora]
 
+  reference-data-service:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: services/reference-data-service/Dockerfile
+    environment:
+      <<: *service-env
+      NEXORA_HTTP_ADDR: "0.0.0.0:8080"
+      NEXORA_REFERENCE_GRPC_ADDR: "0.0.0.0:9091"
+      NEXORA_REFERENCE_DATABASE_URL: "postgres://${POSTGRES_USER:-nexora}:${POSTGRES_PASSWORD:-nexora_dev_only}@postgres:5432/${POSTGRES_DB:-nexora}?sslmode=disable"
+      NEXORA_REFERENCE_AUTO_MIGRATE: "true"
+      NEXORA_REFERENCE_SEED_FIXTURES: "true"
+      NEXORA_REFERENCE_IDENTITY_GRPC_ADDR: "identity-service:9090"
+      NEXORA_REFERENCE_INTERNAL_TOKEN: "local-reference-service-token-32chars"
+    ports:
+      - "8083:8080"
+      - "9091:9091"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+    networks: [nexora]
+
 volumes:
   postgres-data:
   redpanda-data:

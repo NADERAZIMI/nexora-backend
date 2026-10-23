@@ -5,4 +5,5 @@ use (
 	./libs/go
 	./services/hello-service
 	./services/identity-service
+	./services/reference-data-service
 )

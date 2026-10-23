@@ -15,6 +15,11 @@ service IdentityService {
   rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse);
   rpc GetPermissions(GetPermissionsRequest) returns (GetPermissionsResponse);
   rpc SubmitKyc(SubmitKycRequest) returns (SubmitKycResponse);
+  // Authorize is the internal, session-backed authorization decision used by
+  // trusted platform services. It resolves the caller's live session, checks an
+  // explicit permission, and optionally verifies a step-up action. It never
+  // trusts roles or permissions supplied by the caller.
+  rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
 }
 
 message TokenPair {
@@ -134,4 +139,25 @@ message SubmitKycResponse {
   string case_id = 1;
   string status = 2;
   string request_id = 3;
+}
+
+message AuthorizeRequest {
+  string access_token = 1;
+  string permission = 2;
+  // When set, a valid x-step-up-token gRPC metadata value for this action is
+  // required in addition to the permission.
+  string step_up_action = 3;
+  string request_id = 4;
+}
+
+message AuthorizeResponse {
+  bool allowed = 1;
+  string user_id = 2;
+  repeated string roles = 3;
+  repeated string permissions = 4;
+  bool mfa = 5;
+  // Stable reason code when allowed=false: permission_denied or
+  // step_up_required. Empty when allowed=true.
+  string reason = 6;
+  string request_id = 7;
 }

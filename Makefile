@@ -5,7 +5,7 @@ NPM ?= npm
 COMPOSE ?= docker compose
 
 .PHONY: help bootstrap dev dev-infra app-up down logs fmt fmt-check lint test \
-	test-identity-db domain-gate bench-domain build contracts docs-check security check clean
+	test-identity-db test-reference-db domain-gate bench-domain build contracts docs-check security check clean
 
 help:
 	@echo "NEXORA backend commands"
@@ -18,6 +18,7 @@ help:
 	@echo "  make bench-domain Conversion microbenchmarks"
 	@echo "  make test         Unit tests for Go and Rust, plus domain invariants"
 	@echo "  make test-identity-db  PostgreSQL 17 identity integration/concurrency tests"
+	@echo "  make test-reference-db PostgreSQL 17 reference-data workflow/rollback tests"
 	@echo "  make build        Build Rust workspace and Go services"
 	@echo "  make contracts    Lint and generate contracts"
 	@echo "  make docs-check   Markdown lint"
@@ -36,6 +37,8 @@ dev: dev-infra app-up
 	@echo "  core-template  http://localhost:8081/healthz"
 	@echo "  identity       http://localhost:8082/healthz"
 	@echo "  identity gRPC  localhost:9090"
+	@echo "  reference      http://localhost:8083/healthz"
+	@echo "  reference gRPC localhost:9091"
 	@echo "  Prometheus     http://localhost:9090"
 	@echo "  MinIO console  http://localhost:9001"
 
@@ -56,21 +59,24 @@ fmt:
 	cd libs/go && $(GO) fmt ./...
 	cd services/hello-service && $(GO) fmt ./...
 	cd services/identity-service && $(GO) fmt ./...
+	cd services/reference-data-service && $(GO) fmt ./...
 
 fmt-check:
 	$(CARGO) fmt --all -- --check
-	@test -z "$$(gofmt -l libs/go services/hello-service services/identity-service)" || \
-		(echo "gofmt required for:"; gofmt -l libs/go services/hello-service services/identity-service; exit 1)
+	@test -z "$$(gofmt -l libs/go services/hello-service services/identity-service services/reference-data-service)" || \
+		(echo "gofmt required for:"; gofmt -l libs/go services/hello-service services/identity-service services/reference-data-service; exit 1)
 
 lint: fmt-check
 	$(CARGO) clippy --workspace --all-targets --all-features -- -D warnings
 	cd libs/go && $(GO) vet ./...
 	cd services/hello-service && $(GO) vet ./...
 	cd services/identity-service && $(GO) vet ./...
+	cd services/reference-data-service && $(GO) vet ./...
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		cd libs/go && golangci-lint run ./... && \
 		cd ../../services/hello-service && golangci-lint run ./... && \
-		cd ../identity-service && golangci-lint run ./...; \
+		cd ../identity-service && golangci-lint run ./... && \
+		cd ../reference-data-service && golangci-lint run ./...; \
 	else echo "golangci-lint not installed; skipped"; fi
 
 test: domain-gate
@@ -78,11 +84,17 @@ test: domain-gate
 	cd libs/go && $(GO) test -race ./...
 	cd services/hello-service && $(GO) test -race ./...
 	cd services/identity-service && $(GO) test -race ./...
+	cd services/reference-data-service && $(GO) test -race ./...
 
 test-identity-db:
 	@test -n "$$NEXORA_TEST_DATABASE_URL" || \
 		(echo "NEXORA_TEST_DATABASE_URL must point to a disposable PostgreSQL 17 test database"; exit 1)
 	cd services/identity-service && $(GO) test -race -count=1 -run 'Test(PostgresIdentityStoreIntegration|IdentityServicePostgresEndToEnd|IdentityServicePostgresWebAuthn)$$' -v ./internal/postgres
+
+test-reference-db:
+	@test -n "$$NEXORA_TEST_DATABASE_URL" || \
+		(echo "NEXORA_TEST_DATABASE_URL must point to a disposable PostgreSQL 17 test database"; exit 1)
+	cd services/reference-data-service && $(GO) test -race -count=1 -run 'Test(MigrationsUpDown|ReferenceDataWorkflowPostgres)$$' -v ./internal/postgres
 
 domain-gate:
 	$(CARGO) test -p nexora-types --all-features
@@ -95,6 +107,7 @@ build:
 	$(CARGO) build --workspace --all-targets
 	cd services/hello-service && $(GO) build ./...
 	cd services/identity-service && $(GO) build ./...
+	cd services/reference-data-service && $(GO) build ./...
 
 contracts:
 	cd contracts && buf lint
@@ -113,6 +126,7 @@ security:
 	cd libs/go && govulncheck ./...
 	cd services/hello-service && govulncheck ./...
 	cd services/identity-service && govulncheck ./...
+	cd services/reference-data-service && govulncheck ./...
 	trivy fs --scanners vuln,secret,misconfig --severity CRITICAL --exit-code 1 \
 		--skip-dirs node_modules --skip-dirs target --skip-dirs gen --skip-dirs .git .
 

@@ -113,6 +113,31 @@ func TestGRPCIdentityLifecycle(t *testing.T) {
 		t.Fatalf("unexpected permissions response: %+v", permissions)
 	}
 
+	authorized, err := client.Authorize(ctx, &identityv1.AuthorizeRequest{
+		AccessToken: accessToken, Permission: identity.PermSelfRead, RequestId: "grpc-authorize",
+	})
+	if err != nil || !authorized.GetAllowed() {
+		t.Fatalf("gRPC authorize self:read: %+v %v", authorized, err)
+	}
+	denied, err := client.Authorize(ctx, &identityv1.AuthorizeRequest{
+		AccessToken: accessToken, Permission: identity.PermAdminReferenceWrite,
+	})
+	if err != nil {
+		t.Fatalf("gRPC authorize admin reference: %v", err)
+	}
+	if denied.GetAllowed() || denied.GetReason() != "permission_denied" {
+		t.Fatalf("customer unexpectedly authorized for reference writes: %+v", denied)
+	}
+	stepUp, err := client.Authorize(ctx, &identityv1.AuthorizeRequest{
+		AccessToken: accessToken, Permission: identity.PermSelfWrite, StepUpAction: "api_key:create",
+	})
+	if err != nil {
+		t.Fatalf("gRPC authorize step-up: %v", err)
+	}
+	if stepUp.GetAllowed() || stepUp.GetReason() != "step_up_required" {
+		t.Fatalf("missing step-up token was not rejected: %+v", stepUp)
+	}
+
 	refreshed, err := client.Refresh(ctx, &identityv1.RefreshRequest{RefreshToken: loggedIn.GetTokens().GetRefreshToken()})
 	if err != nil {
 		t.Fatalf("gRPC refresh: %v", err)

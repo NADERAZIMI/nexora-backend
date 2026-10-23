@@ -1,0 +1,1081 @@
+openapi: 3.1.0
+info:
+  title: NEXORA Reference Data API
+  version: 1.0.0
+  description: |
+    B04 reference-data, instrument-registry, and versioned-configuration
+    contract. Published versions are immutable canonical JSON documents whose
+    SHA-256 content hash is computed over the exact bytes served. Administrative
+    mutations require a live identity session, an explicit permission, and, for
+    privileged actions, step-up authentication. Maker/checker approval requires
+    two distinct approvers and the proposal creator can never approve.
+
+    Amounts are exact integer atomic units (up to 10^30). Floating-point
+    financial values are never accepted. Reference data never contains private
+    keys, live custody addresses, balances, positions, orders, or trades.
+  contact:
+    name: NEXORA Platform Engineering
+servers:
+  - url: http://localhost:8083
+    description: Local development
+tags:
+  - name: System
+    description: Health, readiness, and metrics
+  - name: Draft
+    description: Mutable working configuration
+  - name: Registry
+    description: Read-only asset and network registry views for Super Admins
+  - name: Proposals
+    description: Immutable submissions and maker/checker decisions
+  - name: Versions
+    description: Immutable published configuration versions
+  - name: Activation
+    description: Atomic per-shard activation and explicit rollback
+  - name: Snapshot
+    description: Token-protected internal snapshot distribution
+  - name: Audit
+    description: Append-only hash-chained administrative audit
+security:
+  - bearerAuth: []
+paths:
+  /healthz:
+    get:
+      operationId: getReferenceDataLiveness
+      tags: [System]
+      summary: Liveness probe
+      description: Returns 200 while the process is running.
+      security: []
+      responses:
+        "200":
+          description: Process is alive
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /readyz:
+    get:
+      operationId: getReferenceDataReadiness
+      tags: [System]
+      summary: Readiness probe
+      description: Reports whether authoritative PostgreSQL is reachable.
+      security: []
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Service is not ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /metrics:
+    get:
+      operationId: getReferenceDataMetrics
+      tags: [System]
+      summary: Prometheus metrics
+      description: Exposes bounded-cardinality reference-data and runtime metrics.
+      security: []
+      responses:
+        "200":
+          description: OpenMetrics text
+          content:
+            text/plain:
+              schema: { type: string }
+  /v1/reference-data/active:
+    get:
+      operationId: getActiveReferenceDataSnapshot
+      tags: [Snapshot]
+      summary: Fetch the complete active snapshot for a shard
+      description: |
+        Requires the service token header. The response body is the exact
+        canonical document; X-Nexora-Config-Hash is its SHA-256. Consumers must
+        verify the hash, schema, and semantic validity before atomically
+        replacing their current snapshot.
+      security: []
+      parameters:
+        - { $ref: "#/components/parameters/ShardID" }
+        - { $ref: "#/components/parameters/ServiceToken" }
+      responses:
+        "200":
+          description: Complete active snapshot
+          headers:
+            X-Nexora-Config-Version:
+              schema: { type: integer, format: int64, minimum: 1 }
+            X-Nexora-Config-Hash:
+              schema: { type: string, pattern: "^[0-9a-f]{64}$" }
+            X-Nexora-Config-Schema:
+              schema: { type: string }
+            X-Nexora-Config-Effective-At:
+              schema: { type: string, format: date-time }
+            X-Nexora-Config-Shard:
+              schema: { type: string }
+            X-Nexora-Config-Rollback:
+              schema: { type: boolean }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReferenceDocument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/reference-data/versions/{version}/snapshot:
+    get:
+      operationId: getVersionReferenceDataSnapshot
+      tags: [Snapshot]
+      summary: Fetch a specific published snapshot for recovery
+      description: Returns exact canonical bytes for an immutable published version. Used for recovery and explicit rollback.
+      security: []
+      parameters:
+        - name: version
+          in: path
+          required: true
+          schema: { type: integer, format: int64, minimum: 1 }
+        - { $ref: "#/components/parameters/ShardID" }
+        - { $ref: "#/components/parameters/ServiceToken" }
+      responses:
+        "200":
+          description: Complete published snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReferenceDocument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/admin/reference-data/assets:
+    get:
+      operationId: listReferenceDataAssets
+      tags: [Registry]
+      summary: List registered assets
+      description: Returns the asset registry from the working draft together with the draft revision and content hash. This is a read-only view; use the draft PUT endpoint to change it.
+      responses:
+        "200":
+          description: Asset registry view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssetList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/admin/reference-data/networks:
+    get:
+      operationId: listReferenceDataNetworks
+      tags: [Registry]
+      summary: List registered networks
+      description: Returns the network registry from the working draft together with the draft revision and content hash. Networks are independent of assets and never execute chain operations here.
+      responses:
+        "200":
+          description: Network registry view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NetworkList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/admin/reference-data/draft:
+    get:
+      operationId: getReferenceDataDraft
+      tags: [Draft]
+      summary: Read the working draft
+      description: Returns the mutable working draft, its revision, and its published base version.
+      responses:
+        "200":
+          description: Current draft
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Draft" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      operationId: putReferenceDataDraft
+      tags: [Draft]
+      summary: Atomically replace the complete working draft
+      description: |
+        Requires admin:reference:write and step-up action admin:reference:write.
+        expected_revision provides optimistic concurrency. After any published
+        version exists, base_version must equal the latest published version.
+      parameters:
+        - { $ref: "#/components/parameters/StepUpToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PutDraftRequest" }
+      responses:
+        "200":
+          description: Draft saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Draft" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /v1/admin/reference-data/draft/reset:
+    post:
+      operationId: resetReferenceDataDraft
+      tags: [Draft]
+      summary: Replace the draft with a published version
+      description: Atomically resets the working draft to an immutable published snapshot.
+      parameters:
+        - { $ref: "#/components/parameters/StepUpToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_revision, version]
+              properties:
+                expected_revision: { type: integer, format: int64, minimum: 0 }
+                version: { type: integer, format: int64, minimum: 1 }
+      responses:
+        "200":
+          description: Draft reset
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Draft" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/admin/reference-data/draft/validate:
+    post:
+      operationId: validateReferenceDataDraft
+      tags: [Draft]
+      summary: Validate a document without persisting it
+      description: Runs the same semantic validation used before persistence and publication.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [document]
+              properties:
+                document: { $ref: "#/components/schemas/ReferenceDocument" }
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /v1/admin/reference-data/proposals:
+    get:
+      operationId: listReferenceDataProposals
+      tags: [Proposals]
+      summary: List recent proposals
+      description: Returns immutable proposal metadata and approval state.
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Proposals
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposals]
+                properties:
+                  proposals:
+                    type: array
+                    items: { $ref: "#/components/schemas/Proposal" }
+    post:
+      operationId: submitReferenceDataProposal
+      tags: [Proposals]
+      summary: Snapshot the current draft as an immutable proposal
+      description: Requires admin:reference:write and matching step-up.
+      parameters:
+        - { $ref: "#/components/parameters/StepUpToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_revision]
+              properties:
+                expected_revision: { type: integer, format: int64, minimum: 0 }
+      responses:
+        "201":
+          description: Proposal submitted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Proposal" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/admin/reference-data/proposals/{proposalId}:
+    get:
+      operationId: getReferenceDataProposal
+      tags: [Proposals]
+      summary: Read one proposal
+      description: Returns the frozen proposal content and all maker/checker decisions.
+      parameters:
+        - { $ref: "#/components/parameters/ProposalID" }
+      responses:
+        "200":
+          description: Proposal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Proposal" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/admin/reference-data/proposals/{proposalId}/approve:
+    post:
+      operationId: approveReferenceDataProposal
+      tags: [Proposals]
+      summary: Record a checker approval
+      description: |
+        Requires admin:reference:approve and matching step-up. The proposal
+        creator cannot approve. Two distinct approvals are required before
+        publication. The supplied proposal_hash must match the submitted bytes.
+      parameters:
+        - { $ref: "#/components/parameters/ProposalID" }
+        - { $ref: "#/components/parameters/StepUpToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [proposal_hash]
+              properties:
+                proposal_hash: { type: string, pattern: "^[0-9a-f]{64}$" }
+                reason: { type: string, maxLength: 1024 }
+      responses:
+        "200":
+          description: Approval recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Proposal" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/admin/reference-data/proposals/{proposalId}/reject:
+    post:
+      operationId: rejectReferenceDataProposal
+      tags: [Proposals]
+      summary: Reject a pending proposal
+      description: Records a checker rejection and freezes the proposal.
+      parameters:
+        - { $ref: "#/components/parameters/ProposalID" }
+        - { $ref: "#/components/parameters/StepUpToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 1024 }
+      responses:
+        "200":
+          description: Proposal rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Proposal" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/admin/reference-data/proposals/{proposalId}/publish:
+    post:
+      operationId: publishReferenceDataProposal
+      tags: [Versions]
+      summary: Publish an approved proposal as an immutable version
+      description: |
+        Requires admin:reference:publish and matching step-up. Publication is
+        idempotent per proposal. The proposal must be based on the latest
+        published version and have two distinct approvals.
+      parameters:
+        - { $ref: "#/components/parameters/ProposalID" }
+        - { $ref: "#/components/parameters/StepUpToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                effective_at: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Version published
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Version" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/admin/reference-data/versions:
+    get:
+      operationId: listReferenceDataVersions
+      tags: [Versions]
+      summary: List immutable published versions
+      description: Returns published version metadata newest first.
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Version metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    items: { $ref: "#/components/schemas/VersionSummary" }
+  /v1/admin/reference-data/versions/{version}:
+    get:
+      operationId: getReferenceDataVersion
+      tags: [Versions]
+      summary: Read one immutable version
+      description: Returns one published version and its canonical document.
+      parameters:
+        - name: version
+          in: path
+          required: true
+          schema: { type: integer, format: int64, minimum: 1 }
+      responses:
+        "200":
+          description: Version including canonical document
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Version" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/admin/reference-data/diff:
+    get:
+      operationId: diffReferenceDataVersions
+      tags: [Versions]
+      summary: Structural diff between two published versions
+      description: Returns a bounded structural change list without exposing mutable state.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, format: int64, minimum: 1 }
+        - name: to
+          in: query
+          required: true
+          schema: { type: integer, format: int64, minimum: 1 }
+      responses:
+        "200":
+          description: Bounded diff
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Diff" }
+  /v1/admin/reference-data/diff/draft:
+    get:
+      operationId: diffReferenceDataDraft
+      tags: [Draft]
+      summary: Structural diff between a base version and the draft
+      description: Returns a bounded structural change list between a published version and the working draft.
+      parameters:
+        - name: base
+          in: query
+          required: true
+          schema: { type: integer, format: int64, minimum: 1 }
+      responses:
+        "200":
+          description: Bounded diff
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Diff" }
+  /v1/admin/reference-data/active:
+    get:
+      operationId: getReferenceDataActive
+      tags: [Activation]
+      summary: Read the effective version for a shard
+      description: Returns the atomically effective version and activation metadata for a shard.
+      parameters:
+        - { $ref: "#/components/parameters/ShardID" }
+      responses:
+        "200":
+          description: Active version
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Active" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/admin/reference-data/activations:
+    get:
+      operationId: listReferenceDataActivations
+      tags: [Activation]
+      summary: List activation history
+      description: Returns immutable activation, failure, supersession, and rollback records.
+      parameters:
+        - { $ref: "#/components/parameters/ShardID" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Activations
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [activations]
+                properties:
+                  activations:
+                    type: array
+                    items: { $ref: "#/components/schemas/Activation" }
+    post:
+      operationId: activateReferenceDataVersion
+      tags: [Activation]
+      summary: Atomically activate a published version for a shard
+      description: |
+        Requires admin:reference:activate and matching step-up. A lower version
+        without an explicit rollback operation returns REF_ROLLBACK_REQUIRED.
+        expected_version is an optimistic guard; a mismatch returns
+        REF_STALE_VERSION and the shard keeps its previous complete snapshot.
+      parameters:
+        - { $ref: "#/components/parameters/StepUpToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActivationRequest" }
+      responses:
+        "201":
+          description: Activation accepted or scheduled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Activation" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/admin/reference-data/rollbacks:
+    post:
+      operationId: rollbackReferenceDataVersion
+      tags: [Activation]
+      summary: Explicitly roll a shard back to an older published version
+      description: Requires a reason, admin:reference:activate, and matching step-up.
+      parameters:
+        - { $ref: "#/components/parameters/StepUpToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RollbackRequest" }
+      responses:
+        "201":
+          description: Rollback activation accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Activation" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/admin/reference-data/audit:
+    get:
+      operationId: listReferenceDataAudit
+      tags: [Audit]
+      summary: Read append-only hash-chained audit history
+      description: Returns audit events newest first. Each event hash covers its metadata and the previous event hash.
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - name: before
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Audit events newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/AuditEvent" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ShardID:
+      name: shard_id
+      in: query
+      schema: { type: string, pattern: "^[a-z0-9][a-z0-9_.:-]{0,63}$" }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    ProposalID:
+      name: proposalId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    StepUpToken:
+      name: X-Step-Up-Token
+      in: header
+      required: true
+      schema: { type: string }
+    ServiceToken:
+      name: X-Nexora-Service-Token
+      in: header
+      required: true
+      schema: { type: string }
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Unauthorized:
+      description: Authentication or service token is invalid
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Forbidden:
+      description: Permission or step-up requirement not satisfied
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: Object not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Conflict:
+      description: Concurrency, version, or state conflict
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    ValidationFailed:
+      description: Semantic configuration validation failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    Health:
+      type: object
+      required: [status, service]
+      properties:
+        status: { type: string }
+        service: { type: string }
+        version: { type: string }
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - REF_NOT_FOUND
+                - REF_INVALID_INPUT
+                - REF_VALIDATION_FAILED
+                - REF_STALE_DRAFT
+                - REF_STALE_VERSION
+                - REF_APPROVAL_REQUIRED
+                - REF_SELF_APPROVAL
+                - REF_INVALID_STATE
+                - REF_HASH_MISMATCH
+                - REF_ROLLBACK_REQUIRED
+                - REF_CONFLICT
+                - REF_UNAUTHORIZED
+                - REF_FORBIDDEN
+                - REF_STEP_UP_REQUIRED
+                - REF_INTERNAL
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+    Amount:
+      type: integer
+      description: Exact base-10 atomic units up to 10^30. Never a float or string.
+    Asset:
+      type: object
+      additionalProperties: false
+      required: [asset_id, symbol, display_name, decimals, kind, status, trading_enabled, transfer_enabled, deposit_enabled, withdrawal_enabled, withdrawal_fee]
+      properties:
+        asset_id: { type: integer, format: int32, minimum: 1 }
+        symbol: { type: string, pattern: "^[A-Z0-9]{2,16}$" }
+        display_name: { type: string }
+        decimals: { type: integer, minimum: 0, maximum: 18 }
+        kind: { type: string, enum: [crypto, stablecoin] }
+        status: { type: string, enum: [active, maintenance, delisted] }
+        trading_enabled: { type: boolean }
+        transfer_enabled: { type: boolean }
+        deposit_enabled: { type: boolean }
+        withdrawal_enabled: { type: boolean }
+        min_deposit: { $ref: "#/components/schemas/Amount" }
+        max_deposit: { $ref: "#/components/schemas/Amount" }
+        min_withdrawal: { $ref: "#/components/schemas/Amount" }
+        max_withdrawal: { $ref: "#/components/schemas/Amount" }
+        withdrawal_fee: { $ref: "#/components/schemas/Amount" }
+    Network:
+      type: object
+      additionalProperties: false
+      required: [network_id, display_name, address_format, memo_required, confirmations, status, deposit_enabled, withdrawal_enabled, min_deposit, min_withdrawal, withdrawal_fee]
+      properties:
+        network_id: { type: string }
+        display_name: { type: string }
+        chain_id: { type: string }
+        native_asset_id: { type: integer, format: int32 }
+        address_format: { type: string }
+        memo_required: { type: boolean }
+        confirmations: { type: integer, minimum: 1, maximum: 10000 }
+        status: { type: string, enum: [active, maintenance, disabled] }
+        deposit_enabled: { type: boolean }
+        withdrawal_enabled: { type: boolean }
+        min_deposit: { $ref: "#/components/schemas/Amount" }
+        min_withdrawal: { $ref: "#/components/schemas/Amount" }
+        withdrawal_fee: { $ref: "#/components/schemas/Amount" }
+    AssetNetwork:
+      type: object
+      additionalProperties: false
+      required: [asset_id, network_id, decimals, deposit_enabled, withdrawal_enabled, min_deposit, min_withdrawal, withdrawal_fee, memo_required, confirmations, status]
+      properties:
+        asset_id: { type: integer, format: int32 }
+        network_id: { type: string }
+        contract_address: { type: string }
+        decimals: { type: integer, minimum: 0, maximum: 18 }
+        deposit_enabled: { type: boolean }
+        withdrawal_enabled: { type: boolean }
+        min_deposit: { $ref: "#/components/schemas/Amount" }
+        min_withdrawal: { $ref: "#/components/schemas/Amount" }
+        withdrawal_fee: { $ref: "#/components/schemas/Amount" }
+        memo_required: { type: boolean }
+        confirmations: { type: integer, minimum: 1 }
+        status: { type: string, enum: [active, maintenance, disabled] }
+    MarginTier:
+      type: object
+      additionalProperties: false
+      required: [notional_floor, notional_cap, max_leverage, mmr_bps, maintenance_amount]
+      properties:
+        notional_floor: { $ref: "#/components/schemas/Amount" }
+        notional_cap: { $ref: "#/components/schemas/Amount" }
+        max_leverage: { type: integer, minimum: 1, maximum: 1000 }
+        mmr_bps: { type: integer, minimum: 1, maximum: 10000 }
+        maintenance_amount: { $ref: "#/components/schemas/Amount" }
+    ContractSpec:
+      type: object
+      additionalProperties: false
+      required: [contract_size, settlement_asset, max_leverage, margin_tiers, funding_interval_secs, funding_cap_bps, liquidation_fee_bps, adl_enabled]
+      properties:
+        contract_size:
+          type: object
+          required: [numerator, denominator]
+          properties:
+            numerator: { type: integer, minimum: 1 }
+            denominator: { type: integer, minimum: 1 }
+        settlement_asset: { type: integer, format: int32 }
+        max_leverage: { type: integer, minimum: 1, maximum: 1000 }
+        margin_tiers:
+          type: array
+          items: { $ref: "#/components/schemas/MarginTier" }
+        funding_interval_secs: { type: integer, minimum: 60 }
+        funding_cap_bps: { type: integer, minimum: 0, maximum: 10000 }
+        liquidation_fee_bps: { type: integer, minimum: 0, maximum: 10000 }
+        adl_enabled: { type: boolean }
+    Instrument:
+      type: object
+      additionalProperties: false
+      required: [symbol_id, symbol, kind, base, quote, tick_size, lot_size, price_decimals, qty_decimals, min_qty, max_qty, min_notional, max_notional, price_band_bps, maker_fee_bps, taker_fee_bps, status, allowed_order_types, allowed_time_in_force, listed_at, fee_schedule_id]
+      properties:
+        symbol_id: { type: integer, format: int32, minimum: 1 }
+        symbol: { type: string }
+        kind: { type: string, enum: [SPOT, PERPETUAL] }
+        base: { type: integer, format: int32 }
+        quote: { type: integer, format: int32 }
+        tick_size: { $ref: "#/components/schemas/Amount" }
+        lot_size: { $ref: "#/components/schemas/Amount" }
+        price_decimals: { type: integer, minimum: 0, maximum: 18 }
+        qty_decimals: { type: integer, minimum: 0, maximum: 18 }
+        min_qty: { $ref: "#/components/schemas/Amount" }
+        max_qty: { $ref: "#/components/schemas/Amount" }
+        min_notional: { $ref: "#/components/schemas/Amount" }
+        max_notional: { $ref: "#/components/schemas/Amount" }
+        price_band_bps: { type: integer, minimum: 0, maximum: 10000 }
+        maker_fee_bps: { type: integer, minimum: -1000, maximum: 10000 }
+        taker_fee_bps: { type: integer, minimum: 0, maximum: 10000 }
+        status: { type: string, enum: [ACTIVE, REDUCE_ONLY, HALTED, DELISTED] }
+        contract: { $ref: "#/components/schemas/ContractSpec" }
+        allowed_order_types:
+          type: array
+          items: { type: string }
+        allowed_time_in_force:
+          type: array
+          items: { type: string }
+        listed_at: { type: string, format: date-time }
+        fee_schedule_id: { type: string }
+        margin_tier_set_id: { type: string }
+        risk_limit_ref: { type: string }
+        price_source_policy_ref: { type: string }
+        margin_mode_capabilities:
+          type: array
+          items: { type: string }
+        position_mode_capabilities:
+          type: array
+          items: { type: string }
+    FeeTier:
+      type: object
+      additionalProperties: false
+      required: [tier_index, min_volume, maker_bps, taker_bps]
+      properties:
+        tier_index: { type: integer, minimum: 0 }
+        min_volume: { $ref: "#/components/schemas/Amount" }
+        max_volume: { $ref: "#/components/schemas/Amount" }
+        maker_bps: { type: integer, minimum: -1000, maximum: 10000 }
+        taker_bps: { type: integer, minimum: 0, maximum: 10000 }
+    FeeSchedule:
+      type: object
+      additionalProperties: false
+      required: [schedule_id, name, market_type, is_default, account_category, effective_at, status, rebate_enabled, tiers]
+      properties:
+        schedule_id: { type: string }
+        name: { type: string }
+        market_type: { type: string, enum: [spot, perp] }
+        instrument_id: { type: integer, format: int32 }
+        is_default: { type: boolean }
+        account_category: { type: string }
+        effective_at: { type: string, format: date-time }
+        status: { type: string, enum: [draft, active, retired] }
+        rebate_enabled: { type: boolean }
+        tiers:
+          type: array
+          items: { $ref: "#/components/schemas/FeeTier" }
+    MarginTierSet:
+      type: object
+      additionalProperties: false
+      required: [set_id, name, market_type, effective_at, status, max_leverage, tiers]
+      properties:
+        set_id: { type: string }
+        name: { type: string }
+        market_type: { type: string, enum: [spot, perp] }
+        instrument_id: { type: integer, format: int32 }
+        effective_at: { type: string, format: date-time }
+        status: { type: string, enum: [draft, active, retired] }
+        max_leverage: { type: integer, minimum: 1, maximum: 1000 }
+        tiers:
+          type: array
+          items: { $ref: "#/components/schemas/MarginTier" }
+    PresentationPolicy:
+      type: object
+      additionalProperties: false
+      required: [policy_id, symbol, source_priority, fallback_priority, freshness_ms, staleness_ms, max_deviation_bps, quote_method, max_quote_offset_bps, show_synthetic_volume, synthetic_volume_label, authoritative_for_risk, status]
+      properties:
+        policy_id: { type: string }
+        symbol: { type: string }
+        source_priority:
+          type: array
+          items: { type: string, enum: [bybit, mexc] }
+        fallback_priority:
+          type: array
+          items: { type: string }
+        freshness_ms: { type: integer, minimum: 100 }
+        staleness_ms: { type: integer, minimum: 100 }
+        max_deviation_bps: { type: integer, minimum: 0, maximum: 1000 }
+        quote_method: { type: string, enum: [midpoint, last, index, bounded_offset] }
+        max_quote_offset_bps: { type: integer, minimum: 0, maximum: 1000 }
+        show_synthetic_volume: { type: boolean, const: false }
+        synthetic_volume_label: { type: string, maxLength: 0 }
+        authoritative_for_risk: { type: boolean, const: false }
+        status: { type: string, enum: [active, disabled] }
+    ReferenceDocument:
+      type: object
+      additionalProperties: false
+      required: [schema_version, assets, networks, asset_networks, instruments, fee_schedules, margin_tier_sets, presentation_policies]
+      properties:
+        schema_version: { type: string, const: nexora.reference-data.v1 }
+        assets:
+          type: array
+          items: { $ref: "#/components/schemas/Asset" }
+        networks:
+          type: array
+          items: { $ref: "#/components/schemas/Network" }
+        asset_networks:
+          type: array
+          items: { $ref: "#/components/schemas/AssetNetwork" }
+        instruments:
+          type: array
+          items: { $ref: "#/components/schemas/Instrument" }
+        fee_schedules:
+          type: array
+          items: { $ref: "#/components/schemas/FeeSchedule" }
+        margin_tier_sets:
+          type: array
+          items: { $ref: "#/components/schemas/MarginTierSet" }
+        presentation_policies:
+          type: array
+          items: { $ref: "#/components/schemas/PresentationPolicy" }
+    Draft:
+      type: object
+      required: [revision, content_hash, updated_at]
+      properties:
+        revision: { type: integer, format: int64, minimum: 0 }
+        base_version: { type: integer, format: int64 }
+        content_hash: { type: string }
+        document: { $ref: "#/components/schemas/ReferenceDocument" }
+        updated_by: { type: string, format: uuid }
+        updated_at: { type: string, format: date-time }
+    AssetList:
+      type: object
+      additionalProperties: false
+      required: [revision, content_hash, assets]
+      properties:
+        revision: { type: integer, format: int64, minimum: 0 }
+        base_version: { type: integer, format: int64 }
+        content_hash: { type: string, pattern: "^[a-f0-9]{64}$" }
+        assets:
+          type: array
+          items: { $ref: "#/components/schemas/Asset" }
+    NetworkList:
+      type: object
+      additionalProperties: false
+      required: [revision, content_hash, networks]
+      properties:
+        revision: { type: integer, format: int64, minimum: 0 }
+        base_version: { type: integer, format: int64 }
+        content_hash: { type: string, pattern: "^[a-f0-9]{64}$" }
+        networks:
+          type: array
+          items: { $ref: "#/components/schemas/Network" }
+    PutDraftRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_revision, document]
+      properties:
+        expected_revision: { type: integer, format: int64, minimum: 0 }
+        base_version: { type: integer, format: int64, minimum: 1 }
+        document: { $ref: "#/components/schemas/ReferenceDocument" }
+    ValidationResult:
+      type: object
+      required: [valid, issues, content_hash]
+      properties:
+        valid: { type: boolean }
+        content_hash: { type: string }
+        issues:
+          type: array
+          items:
+            type: object
+            required: [path, code, message]
+            properties:
+              path: { type: string }
+              code: { type: string }
+              message: { type: string }
+    Approval:
+      type: object
+      required: [approver_id, decision, proposal_hash, decided_at]
+      properties:
+        approver_id: { type: string, format: uuid }
+        decision: { type: string, enum: [approved, rejected] }
+        reason: { type: string }
+        proposal_hash: { type: string, pattern: "^[0-9a-f]{64}$" }
+        decided_at: { type: string, format: date-time }
+    Proposal:
+      type: object
+      required: [proposal_id, schema_version, content_hash, document, status, created_by, created_at, submitted_at, approvals]
+      properties:
+        proposal_id: { type: string, format: uuid }
+        base_version: { type: integer, format: int64 }
+        schema_version: { type: string }
+        content_hash: { type: string, pattern: "^[0-9a-f]{64}$" }
+        document: { $ref: "#/components/schemas/ReferenceDocument" }
+        status: { type: string, enum: [pending_approval, approved, rejected, published, cancelled] }
+        created_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        submitted_at: { type: string, format: date-time }
+        decided_at: { type: string, format: date-time }
+        rejection_reason: { type: string }
+        published_version: { type: integer, format: int64 }
+        approvals:
+          type: array
+          items: { $ref: "#/components/schemas/Approval" }
+    VersionSummary:
+      type: object
+      required: [version, schema_version, content_hash, effective_at, created_by, created_at, proposal_id, approval_count, canonicalization]
+      properties:
+        version: { type: integer, format: int64, minimum: 1 }
+        schema_version: { type: string }
+        content_hash: { type: string, pattern: "^[0-9a-f]{64}$" }
+        effective_at: { type: string, format: date-time }
+        created_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        proposal_id: { type: string, format: uuid }
+        rollback_of: { type: integer, format: int64 }
+        approval_count: { type: integer, minimum: 2 }
+        canonicalization: { type: string }
+    Version:
+      allOf:
+        - { $ref: "#/components/schemas/VersionSummary" }
+        - type: object
+          required: [document]
+          properties:
+            document: { $ref: "#/components/schemas/ReferenceDocument" }
+    Change:
+      type: object
+      required: [path, kind]
+      properties:
+        path: { type: string }
+        before: {}
+        after: {}
+        kind: { type: string, enum: [added, removed, changed, decode_error] }
+    Diff:
+      type: object
+      required: [from_version, to_version, changes, truncated]
+      properties:
+        from_version: { type: integer, format: int64 }
+        to_version: { type: integer, format: int64 }
+        changes:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/Change" }
+        truncated: { type: boolean }
+    Active:
+      type: object
+      required: [shard_id, version, activation_id, activated_at, rollback]
+      properties:
+        shard_id: { type: string }
+        version: { type: integer, format: int64 }
+        activation_id: { type: string, format: uuid }
+        activated_at: { type: string, format: date-time }
+        rollback: { type: boolean }
+    ActivationRequest:
+      type: object
+      additionalProperties: false
+      required: [version, idempotency_key]
+      properties:
+        shard_id: { type: string, pattern: "^[a-z0-9][a-z0-9_.:-]{0,63}$" }
+        version: { type: integer, format: int64, minimum: 1 }
+        expected_version: { type: integer, format: int64, minimum: 0 }
+        effective_at: { type: string, format: date-time }
+        idempotency_key: { type: string, minLength: 1, maxLength: 128 }
+    RollbackRequest:
+      allOf:
+        - { $ref: "#/components/schemas/ActivationRequest" }
+        - type: object
+          required: [reason]
+          properties:
+            reason: { type: string, minLength: 1, maxLength: 1024 }
+    Activation:
+      type: object
+      required: [activation_id, shard_id, version, status, requested_by, requested_at, effective_at, idempotency_key]
+      properties:
+        activation_id: { type: string, format: uuid }
+        shard_id: { type: string }
+        version: { type: integer, format: int64 }
+        status: { type: string, enum: [pending, active, failed, superseded] }
+        expected_version: { type: integer, format: int64 }
+        rollback_of: { type: integer, format: int64 }
+        requested_by: { type: string, format: uuid }
+        requested_at: { type: string, format: date-time }
+        effective_at: { type: string, format: date-time }
+        activated_at: { type: string, format: date-time }
+        failure: { type: string }
+        idempotency_key: { type: string }
+    AuditEvent:
+      type: object
+      required: [event_id, occurred_at, actor_id, actor_role, action, target_type, target_id, outcome, request_id, metadata, event_hash]
+      properties:
+        event_id: { type: string, format: uuid }
+        occurred_at: { type: string, format: date-time }
+        actor_id: { type: string, format: uuid }
+        actor_role: { type: string }
+        action: { type: string }
+        target_type: { type: string }
+        target_id: { type: string }
+        outcome: { type: string }
+        request_id: { type: string }
+        metadata: { type: object, additionalProperties: true }
+        prev_hash: { type: string }
+        event_hash: { type: string, pattern: "^[0-9a-f]{64}$" }

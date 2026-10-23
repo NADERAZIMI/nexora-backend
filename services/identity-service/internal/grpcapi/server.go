@@ -146,6 +146,48 @@ func (s *Server) GetPermissions(ctx context.Context, req *identityv1.GetPermissi
 	}, nil
 }
 
+// Authorize resolves the live session and returns an explicit authorization
+// decision. Permission and step-up checks are both performed server-side; a
+// caller cannot assert roles, permissions, or MFA state.
+func (s *Server) Authorize(ctx context.Context, req *identityv1.AuthorizeRequest) (*identityv1.AuthorizeResponse, error) {
+	principal, err := s.service.ResolveSession(ctx, req.GetAccessToken())
+	if err != nil {
+		return nil, grpcError(err, s.logger)
+	}
+	view := s.service.Permissions(principal)
+	roles := make([]string, 0, len(view.Roles))
+	for _, role := range view.Roles {
+		roles = append(roles, string(role))
+	}
+	response := &identityv1.AuthorizeResponse{
+		UserId: view.UserID.String(), Roles: roles, Permissions: view.Permissions,
+		Mfa: principal.MFA, RequestId: req.GetRequestId(),
+	}
+	if req.GetPermission() == "" || !containsString(view.Permissions, req.GetPermission()) {
+		response.Allowed = false
+		response.Reason = "permission_denied"
+		return response, nil
+	}
+	if action := req.GetStepUpAction(); action != "" {
+		if err := s.service.ResolveStepUp(stepUpToken(ctx), action, principal); err != nil {
+			response.Allowed = false
+			response.Reason = "step_up_required"
+			return response, nil
+		}
+	}
+	response.Allowed = true
+	return response, nil
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) SubmitKyc(ctx context.Context, req *identityv1.SubmitKycRequest) (*identityv1.SubmitKycResponse, error) {
 	principal, err := s.service.ResolveSession(ctx, req.GetAccessToken())
 	if err != nil {

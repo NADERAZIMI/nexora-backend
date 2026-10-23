@@ -52,3 +52,4 @@ They remain accepted and are indexed here for discoverability.
 |-----|-------|--------|
 | 025 | Separate raw market data, canonical pricing, and display configuration | Accepted |
 | 026 | B01 monorepo and engineering baseline | Accepted |
+| 027 | Versioned reference-data snapshots and atomic activation | Proposed |

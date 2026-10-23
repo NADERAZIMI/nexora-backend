@@ -15,6 +15,14 @@ const (
 	PermAdminAuditRead     = "admin:audit:read"
 	PermAdminKYCRead       = "admin:kyc:read"
 	PermAdminKYCDecide     = "admin:kyc:decide"
+
+	// Reference-data configuration permissions. Publication and activation are
+	// separate from authoring so maker/checker separation can be enforced.
+	PermAdminReferenceRead     = "admin:reference:read"
+	PermAdminReferenceWrite    = "admin:reference:write"
+	PermAdminReferenceApprove  = "admin:reference:approve"
+	PermAdminReferencePublish  = "admin:reference:publish"
+	PermAdminReferenceActivate = "admin:reference:activate"
 )
 
 // rolePermissions is intentionally explicit. Customer roles never receive an
@@ -25,16 +33,18 @@ var rolePermissions = map[Role]map[string]struct{}{
 	RoleSupport:  setOf(PermAdminUserRead, PermAdminAuditRead),
 	RoleRiskOperator: setOf(
 		PermAdminUserRead, PermAdminUserFreeze, PermAdminSessionRevoke,
-		PermAdminAPIKeyRevoke, PermAdminAuditRead,
+		PermAdminAPIKeyRevoke, PermAdminAuditRead, PermAdminReferenceRead,
 	),
 	RoleCompliance: setOf(PermAdminKYCRead, PermAdminKYCDecide, PermAdminUserRead),
-	RoleTreasury:   setOf(PermAdminUserRead),
+	RoleTreasury:   setOf(PermAdminUserRead, PermAdminReferenceRead),
 	RoleAdmin: setOf(
 		PermAdminUserRead, PermAdminUserFreeze, PermAdminRoleManage,
 		PermAdminSessionRevoke, PermAdminAPIKeyRevoke, PermAdminAuditRead,
 		PermAdminKYCRead, PermAdminKYCDecide,
+		PermAdminReferenceRead, PermAdminReferenceWrite, PermAdminReferenceApprove,
+		PermAdminReferencePublish, PermAdminReferenceActivate,
 	),
-	RoleAuditor: setOf(PermAdminUserRead, PermAdminAuditRead, PermAdminKYCRead),
+	RoleAuditor: setOf(PermAdminUserRead, PermAdminAuditRead, PermAdminKYCRead, PermAdminReferenceRead),
 }
 
 func setOf(values ...string) map[string]struct{} {
